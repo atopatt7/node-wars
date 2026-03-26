@@ -68,19 +68,16 @@ export class GameScene extends Phaser.Scene {
       this,
       () => this.nodes,
       {
-        onSendTroops:   (from, to, ratio) => this._sendTroops(from, to, ratio),
-        onRatioChanged: (idx)             => this.uiController.updateRatioHighlight(idx),
+        onSendTroopsMulti: (fromNodes, to) => this._sendTroopsFromMultiple(fromNodes, to),
       }
     );
 
     // ── UI 控制器 ──
     this.uiController = new UIController(this, {
-      levelName:         this.levelData.name,
-      levelId:           this.levelId,
-      levelCount:        LEVELS.length,
-      onPauseToggle:     ()  => this._togglePause(),
-      onRatioSelect:     (i) => this.inputController.setRatioIndex(i),
-      initialRatioIndex: this.inputController.sendRatioIndex,
+      levelName:     this.levelData.name,
+      levelId:       this.levelId,
+      levelCount:    LEVELS.length,
+      onPauseToggle: () => this._togglePause(),
     });
 
     // ── 背景 + 主繪圖層 ──
@@ -193,9 +190,10 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  // ── 發兵（InputController / AISystem callback）────────
+  // ── 發兵（InputController 多來源 / AISystem callback）──
 
   /**
+   * 單一來源派兵（AISystem 呼叫 / 內部共用）
    * @param {NodeBuilding} fromNode
    * @param {NodeBuilding} toNode
    * @param {number}       ratio  0..1
@@ -206,6 +204,18 @@ export class GameScene extends Phaser.Scene {
 
     fromNode.currentUnits -= count;
     this.troops.push(new TroopGroup(fromNode, toNode, fromNode.owner, count));
+  }
+
+  /**
+   * 多來源集火派兵（InputController 的 onSendTroopsMulti callback）
+   * 固定 50% 比例，逐一呼叫 _sendTroops 處理每個來源節點
+   * @param {NodeBuilding[]} fromNodes
+   * @param {NodeBuilding}   toNode
+   */
+  _sendTroopsFromMultiple(fromNodes, toNode) {
+    for (const fromNode of fromNodes) {
+      this._sendTroops(fromNode, toNode, 0.5);
+    }
   }
 
   // ── 暫停（狀態由 GameScene 持有，UI 委由 UIController）

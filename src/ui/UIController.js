@@ -1,25 +1,17 @@
 /**
- * UIController.js — 遊戲 UI 協調器
+ * UIController.js — 遊戲 UI 協調器（多來源集火版）
  *
- * 職責（精簡後）：
- *   - 建立頂部 HUD（關卡名稱、暫停按鈕圖示、返回選關按鈕）
- *   - 建立底部送兵比例列與按鈕
- *   - 更新比例按鈕高亮狀態
- *   - 協調 PausePanel（show / hide）+ 維護暫停按鈕圖示
- *   - 委派 GameOverPanel.show() 顯示結算面板
+ * 變更：
+ *   - 移除底部「派兵比例」按鈕列（25% / 50% / 75% / 100%）
+ *   - 底部改為顯示集火操作提示文字
+ *   - updateRatioHighlight() 保留但為空操作（避免舊呼叫報錯）
  *
- * 不含面板的實作細節——全部交給子模組：
- *   PausePanel    → 暫停遮罩 + 面板 + 文字
- *   GameOverPanel → 結算遮罩 + 面板 + 標題 + 按鈕
- *
- * GameScene 呼叫介面（與舊版完全相同，GameScene 不需改動）：
- *   uiController.setup()
- *   uiController.updateRatioHighlight(idx)
- *   uiController.setPauseState(paused)
- *   uiController.showResult(won)
+ * 職責：
+ *   - 建立頂部 HUD（關卡名稱、暫停按鈕、返回選關）
+ *   - 建立底部操作提示列
+ *   - 協調 PausePanel + GameOverPanel
  */
 
-import { SEND_RATIOS }        from '../config.js';
 import { HUD_TOP, HUD_BOTTOM } from '../config/layout.js';
 import { PausePanel }          from './PausePanel.js';
 import { GameOverPanel }       from './GameOverPanel.js';
@@ -31,22 +23,18 @@ export class UIController {
   /**
    * @param {Phaser.Scene} scene
    * @param {{
-   *   levelName:         string,
-   *   levelId:           number,
-   *   levelCount:        number,
-   *   onPauseToggle:     () => void,
-   *   onRatioSelect:     (index: number) => void,
-   *   initialRatioIndex: number,
+   *   levelName:     string,
+   *   levelId:       number,
+   *   levelCount:    number,
+   *   onPauseToggle: () => void,
    * }} config
    */
   constructor(scene, config) {
     this._scene  = scene;
     this._config = config;
 
-    /** @private Phaser.GameObjects.Text — 暫停按鈕圖示（⏸ / ▶） */
+    /** @private Phaser.GameObjects.Text */
     this._pauseText = null;
-    /** @private Array<{g, bx, by, bW, bH, i}> */
-    this._ratioBtns = [];
 
     // ── 子面板模組 ──
     this._pausePanel    = new PausePanel(scene);
@@ -58,33 +46,20 @@ export class UIController {
 
   // ── 公開 API ──────────────────────────────────────────
 
-  /** create 階段呼叫：一次性建立頂部 HUD 與底部比例列 */
+  /** create 階段呼叫：建立頂部 HUD 與底部提示列 */
   setup() {
     this._createTopHUD();
-    this._createBottomBar();
+    this._createBottomHint();
   }
 
   /**
-   * 更新底部比例按鈕高亮
-   * 由 InputController.onRatioChanged callback 驅動
-   * @param {number} selectedIndex
+   * 空操作，保留供舊程式呼叫（比例按鈕已移除）
+   * @param {number} _selectedIndex
    */
-  updateRatioHighlight(selectedIndex) {
-    for (const { g, bx, by, bW, bH, i } of this._ratioBtns) {
-      const sel = i === selectedIndex;
-      g.clear();
-      g.fillStyle(sel ? 0x2A6ABF : 0x1A2A44, 1);
-      g.fillRoundedRect(bx - bW / 2, by - bH / 2, bW, bH, 7);
-      if (sel) {
-        g.lineStyle(2, 0x7ABBFF, 0.8);
-        g.strokeRoundedRect(bx - bW / 2, by - bH / 2, bW, bH, 7);
-      }
-    }
-  }
+  updateRatioHighlight(_selectedIndex) { /* 已移除比例按鈕 */ }
 
   /**
-   * 同步暫停狀態 UI（由 GameScene._togglePause 呼叫）
-   * 更新頂部暫停按鈕圖示，並委派 PausePanel 顯示/隱藏
+   * 同步暫停狀態（由 GameScene._togglePause 呼叫）
    * @param {boolean} paused
    */
   setPauseState(paused) {
@@ -99,7 +74,6 @@ export class UIController {
 
   /**
    * 顯示遊戲結算面板（由 GameScene._gameOver 呼叫）
-   * 完全委派 GameOverPanel 處理
    * @param {boolean} won
    */
   showResult(won) {
@@ -124,12 +98,11 @@ export class UIController {
       color:    '#AACCEE',
     }).setOrigin(0, 0.5).setDepth(11);
 
-    // 暫停按鈕（右側）— 圖示切換由 setPauseState 管理
+    // 暫停按鈕（右側）
     this._pauseText = scene.add.text(W - 14, HUD_TOP / 2, '⏸', {
       fontSize: '22px',
       color:    '#FFFFFF',
     }).setOrigin(1, 0.5).setDepth(11).setInteractive({ useHandCursor: true });
-
     this._pauseText.on('pointerup', () => onPauseToggle());
 
     // 返回選關（中間）
@@ -146,51 +119,33 @@ export class UIController {
     });
   }
 
-  // ── 私有：底部比例列 ──────────────────────────────────
+  // ── 私有：底部操作提示列 ──────────────────────────────
 
-  _createBottomBar() {
-    const scene  = this._scene;
-    const W      = scene.cameras.main.width;
-    const H      = scene.cameras.main.height;
-    const { onRatioSelect, initialRatioIndex } = this._config;
+  _createBottomHint() {
+    if (HUD_BOTTOM <= 0) return;   // 如果底部高度為 0，不建立
 
-    const barY = H - HUD_BOTTOM;
+    const scene = this._scene;
+    const W     = scene.cameras.main.width;
+    const H     = scene.cameras.main.height;
+    const barY  = H - HUD_BOTTOM;
 
     // 背景條
     const bar = scene.add.graphics().setDepth(10);
-    bar.fillStyle(0x000000, 0.55);
+    bar.fillStyle(0x000000, 0.45);
     bar.fillRect(0, barY, W, HUD_BOTTOM);
 
-    scene.add.text(10, barY + HUD_BOTTOM / 2, '派兵:', {
-      fontSize: '13px',
-      color:    '#667788',
+    // 左側圖示
+    scene.add.text(14, barY + HUD_BOTTOM / 2, '⚔', {
+      fontSize: '16px',
+      color:    '#4A90E2',
     }).setOrigin(0, 0.5).setDepth(11);
 
-    // 4 個比例按鈕
-    this._ratioBtns = [];
-    const bW     = Math.floor((W - 60) / 4) - 6;
-    const bH     = 38;
-    const bBaseX = 52;
-
-    SEND_RATIOS.forEach((ratio, i) => {
-      const bx = bBaseX + i * (bW + 6) + bW / 2;
-      const by = barY + HUD_BOTTOM / 2;
-
-      const g   = scene.add.graphics().setDepth(11);
-      const lbl = scene.add.text(bx, by, `${Math.round(ratio * 100)}%`, {
-        fontSize: '15px',
-        color:    '#FFFFFF',
-      }).setOrigin(0.5).setDepth(12);
-
-      g.setInteractive(
-        new Phaser.Geom.Rectangle(bx - bW / 2, by - bH / 2, bW, bH),
-        Phaser.Geom.Rectangle.Contains
-      );
-      g.on('pointerup', () => onRatioSelect(i));
-
-      this._ratioBtns.push({ g, lbl, bx, by, bW, bH, i });
-    });
-
-    this.updateRatioHighlight(initialRatioIndex);
+    // 提示文字
+    scene.add.text(W / 2, barY + HUD_BOTTOM / 2,
+      '拖曳滑過多個據點可集火派兵（固定 50%）', {
+      fontSize:   '12px',
+      color:      '#778899',
+      fontFamily: 'Arial, sans-serif',
+    }).setOrigin(0.5).setDepth(11);
   }
 }
