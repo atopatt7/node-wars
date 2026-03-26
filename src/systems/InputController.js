@@ -97,6 +97,7 @@ export class InputController {
 
   /**
    * 繪製拖曳預覽線（每幀由 GameScene._draw 呼叫）
+   * 效果：粗線 + 半透明光暈底層 + 沿路流動箭頭 + 目標高光環
    * @param {Phaser.GameObjects.Graphics} g
    */
   drawPreview(g) {
@@ -108,20 +109,54 @@ export class InputController {
 
     const tNode = this._getNodeAt(tx, ty);
 
-    // 根據目標決定線條顏色
-    let lineColor = 0xFFFFFF;
+    // ── 顏色決定 ──
+    let lineColor = 0xCCDDFF;   // 預設白藍
     if (tNode && tNode !== from) {
-      lineColor = tNode.owner === 'player' ? 0x44FF99 : 0xFF4444;
+      lineColor = tNode.owner === 'player' ? 0x55FF99 : 0xFF5555;
     }
 
-    // 虛線
-    g.lineStyle(2.5, lineColor, 0.75);
-    this._dashedLine(g, from.x, from.y, tx, ty, 10, 7);
+    const dx   = tx - from.x;
+    const dy   = ty - from.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 1) return;
 
-    // 目標節點：高光環 + 箭頭
+    // ── 底層光暈線（粗、低透明）──
+    g.lineStyle(8, lineColor, 0.12);
+    g.beginPath();
+    g.moveTo(from.x, from.y);
+    g.lineTo(tx, ty);
+    g.strokePath();
+
+    // ── 主線（中粗、半透明）──
+    g.lineStyle(3.5, lineColor, 0.65);
+    g.beginPath();
+    g.moveTo(from.x, from.y);
+    g.lineTo(tx, ty);
+    g.strokePath();
+
+    // ── 流動箭頭（沿路線每隔 38px，以 Date.now() 做偏移動畫）──
+    const t      = Date.now();
+    const flowOffset = (t * 0.1) % 38;  // 箭頭流動速度
+    const nx = dx / dist;
+    const ny = dy / dist;
+
+    let traveled = flowOffset;
+    while (traveled < dist - 18) {
+      const ax = from.x + nx * traveled;
+      const ay = from.y + ny * traveled;
+      this._drawFlowArrow(g, ax, ay, nx, ny, lineColor);
+      traveled += 38;
+    }
+
+    // ── 目標節點：脈衝高光環 ──
     if (tNode && tNode !== from) {
-      g.lineStyle(3, lineColor, 0.6);
-      g.strokeCircle(tNode.x, tNode.y, tNode.radius + 7);
+      const pulse = 0.5 + 0.5 * Math.abs(Math.sin(t * 0.005));
+      g.lineStyle(3, lineColor, pulse * 0.75);
+      g.strokeCircle(tNode.x, tNode.y, tNode.radius + 8);
+      g.lineStyle(1.5, 0xFFFFFF, pulse * 0.4);
+      g.strokeCircle(tNode.x, tNode.y, tNode.radius + 12);
+
+      // 終點箭頭
       this._drawArrow(g, from.x, from.y, tNode.x, tNode.y, tNode.radius, lineColor);
     }
   }
@@ -176,36 +211,34 @@ export class InputController {
     return this._getNodes().find(n => n.containsPoint(px, py)) ?? null;
   }
 
-  /** 繪製虛線 */
-  _dashedLine(g, x1, y1, x2, y2, dash, gap) {
-    const dx   = x2 - x1;
-    const dy   = y2 - y1;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < 1) return;
+  /**
+   * 沿路徑繪製方向小箭頭（流動動畫的單個箭頭）
+   * @param {Phaser.GameObjects.Graphics} g
+   * @param {number} cx  箭頭中心 x
+   * @param {number} cy  箭頭中心 y
+   * @param {number} nx  方向單位向量 x
+   * @param {number} ny  方向單位向量 y
+   * @param {number} color
+   */
+  _drawFlowArrow(g, cx, cy, nx, ny, color) {
+    const size = 6;
+    // 尖端
+    const px = cx + nx * size;
+    const py = cy + ny * size;
+    // 左後
+    const ax = cx + (-ny * size * 0.55) - nx * size * 0.65;
+    const ay = cy + ( nx * size * 0.55) - ny * size * 0.65;
+    // 右後
+    const bx = cx - (-ny * size * 0.55) - nx * size * 0.65;
+    const by = cy - ( nx * size * 0.55) - ny * size * 0.65;
 
-    const nx = dx / dist;
-    const ny = dy / dist;
-    let traveled = 0;
-    let drawing  = true;
-
-    while (traveled < dist) {
-      const seg = Math.min(drawing ? dash : gap, dist - traveled);
-      if (drawing) {
-        const sx = x1 + nx * traveled;
-        const sy = y1 + ny * traveled;
-        const ex = x1 + nx * (traveled + seg);
-        const ey = y1 + ny * (traveled + seg);
-        g.beginPath();
-        g.moveTo(sx, sy);
-        g.lineTo(ex, ey);
-        g.strokePath();
-      }
-      traveled += seg;
-      drawing = !drawing;
-    }
+    g.fillStyle(color, 0.55);
+    g.fillTriangle(px, py, ax, ay, bx, by);
   }
 
-  /** 在目標節點邊緣繪製箭頭 */
+  /**
+   * 在目標節點邊緣繪製終點箭頭（較大）
+   */
   _drawArrow(g, fx, fy, tx, ty, targetRadius, color) {
     const dx  = tx - fx;
     const dy  = ty - fy;
@@ -214,10 +247,18 @@ export class InputController {
 
     const nx   = dx / len;
     const ny   = dy / len;
-    const tip  = { x: tx - nx * (targetRadius + 1), y: ty - ny * (targetRadius + 1) };
-    const size = 10;
+    const tip  = { x: tx - nx * (targetRadius + 2), y: ty - ny * (targetRadius + 2) };
+    const size = 12;
 
-    g.fillStyle(color, 0.85);
+    // 光暈
+    g.fillStyle(color, 0.35);
+    g.fillTriangle(
+      tip.x,                                tip.y,
+      tip.x - nx * (size + 4) + ny * (size + 4) * 0.55, tip.y - ny * (size + 4) - nx * (size + 4) * 0.55,
+      tip.x - nx * (size + 4) - ny * (size + 4) * 0.55, tip.y - ny * (size + 4) + nx * (size + 4) * 0.55
+    );
+    // 主箭頭
+    g.fillStyle(color, 0.9);
     g.fillTriangle(
       tip.x,                               tip.y,
       tip.x - nx * size + ny * size * 0.5, tip.y - ny * size - nx * size * 0.5,
