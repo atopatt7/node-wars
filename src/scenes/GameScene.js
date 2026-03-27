@@ -85,6 +85,23 @@ export class GameScene extends Phaser.Scene {
     this._drawGrid();
     this.mainGraphics = this.add.graphics();
 
+    // ── 被動效果浮動文字池 ──────────────────────────────────────
+    // 預先建立固定數量的 Phaser Text 物件（物件池），
+    // 避免每次戰鬥都動態 create/destroy，減少 GC 壓力。
+    // _spawnFloatingText() 從池中取一個閒置的 slot 並啟動；
+    // _updateFloatingTexts() 每幀推進動畫並回收過期的 slot。
+    this._ftPool = [];
+    for (let i = 0; i < 14; i++) {
+      const obj = this.add.text(0, 0, '', {
+        fontSize:        '17px',
+        fontFamily:      'Arial Black, sans-serif',
+        stroke:          '#000000',
+        strokeThickness: 4,
+        resolution:      2,
+      }).setOrigin(0.5).setDepth(12).setVisible(false);
+      this._ftPool.push({ obj, active: false, startY: 0, vy: 0, life: 0, maxLife: 0 });
+    }
+
     // ── 關卡 + 輸入 + UI ──
     this._loadLevel();
     this.inputController.setup();
@@ -105,13 +122,27 @@ export class GameScene extends Phaser.Scene {
     // 1. 各節點生產單位
     this.productionSystem.update(delta, this.nodes);
 
-    // 2+3. 部隊移動 → 到達判定 → 戰鬥結算
+    // 2+3. 部隊移動 → 到達判定 → 戰鬥結算 → 被動效果回饋
+    // pendingFeedbacks 收集本幀所有戰鬥的回饋描述，
+    // 在 movementSystem.update() 完成後統一處理（觸發節點閃光 + 浮動文字），
+    // 不修改 MovementSystem 本身。
+    const pendingFeedbacks = [];
     this.troops = this.movementSystem.update(
       delta,
       this.troops,
       this.nodes,
-      (troop, target) => this.combatSystem.resolve(troop, target)
+      (troop, target) => {
+        const fb = this.combatSystem.resolve(troop, target);
+        if (fb?.event) pendingFeedbacks.push(fb);
+      }
     );
+    for (const fb of pendingFeedbacks) {
+      fb.node.triggerEffect(fb.event);   // 節點外圈閃光
+      this._spawnFloatingText(fb);       // 浮動數字
+    }
+
+    // 3b. 更新浮動文字動畫
+    this._updateFloatingTexts(delta);
 
     // 4. AI 決策
     this.aiSystem.update(delta, this.nodes, (from, to, ratio) => {
@@ -232,6 +263,76 @@ export class GameScene extends Phaser.Scene {
   _gameOver(won) {
     this.isGameOver = true;
     this.uiController.showResult(won);
+  }
+
+  // ── 被動效果浮動文字 ──────────────────────────────────
+
+  /**
+   * 從池中取一個閒置 slot，設定浮動文字的初始狀態並啟動。
+   * @param {{ event: string, node: NodeBuilding, x: number, y: number, value: number }} fb
+   */
+  _spawnFloatingText(fb) {
+    const slot = this._ftPool.find(s => !s.active);
+    if (!slot) return;  // 池已滿（同幀大量戰鬥），跳過
+
+    let text, color;
+    if (fb.event === 'attacker_penalty') {
+      // Tower：顯示被削弱的兵力數（紅色，強調損耗）
+      text  = `-${fb.value}`;
+      color = '#FF4433';
+    } else if (fb.event === 'garrison_regen') {
+      // Castle：顯示回復兵力數（翠綠色，強調補員）
+      text  = `+${fb.value}`;
+      color = '#44EE88';
+    } else {
+      return;
+    }
+
+    // 浮動起始點：節點正上方（建築頂部外側）
+    const startY = fb.y - fb.node.radius - 12;
+
+    slot.obj.setPosition(fb.x, startY);
+    slot.obj.setText(text);
+    slot.obj.setColor(color);
+    slot.obj.setScale(1.3);   // 出現時放大，讓玩家一眼注意到
+    slot.obj.setAlpha(1);
+    slot.obj.setVisible(true);
+    slot.startY  = startY;
+    slot.vy      = -52;       // 向上漂移速度（px/s）
+    slot.life    = 0;
+    slot.maxLife = 1100;      // ms
+    slot.active  = true;
+  }
+
+  /**
+   * 每幀更新所有活躍浮動文字的位置、縮放、透明度；
+   * 壽命耗盡後回收回池。
+   * @param {number} delta  幀間隔（ms）
+   */
+  _updateFloatingTexts(delta) {
+    for (const slot of this._ftPool) {
+      if (!slot.active) continue;
+
+      slot.life += delta;
+      if (slot.life >= slot.maxLife) {
+        slot.active = false;
+        slot.obj.setVisible(false);
+        continue;
+      }
+
+      const t = slot.life / slot.maxLife;   // 0 → 1
+
+      // 位置：向上漂移
+      slot.obj.setY(slot.startY + slot.vy * (slot.life / 1000));
+
+      // 縮放：0~15% 時從 1.3 快速收縮回 1.0，之後保持
+      const scale = t < 0.15 ? 1.3 - (t / 0.15) * 0.3 : 1.0;
+      slot.obj.setScale(scale);
+
+      // 透明度：前 50% 保持不透明，後 50% 線性淡出
+      const alpha = t < 0.5 ? 1 : 1 - ((t - 0.5) / 0.5);
+      slot.obj.setAlpha(alpha);
+    }
   }
 
   // ── 靜態背景格線（只畫一次）──────────────────────────

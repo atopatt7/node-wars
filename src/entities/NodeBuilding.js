@@ -59,6 +59,25 @@ export class NodeBuilding {
     // 視覺狀態
     this.isSelected  = false;
     this.pulseTimer  = 0;           // 選取脈衝動畫計時器（由 ProductionSystem 更新）
+
+    // 被動效果觸發閃光（由 GameScene 在戰鬥結算後呼叫 triggerEffect() 設定）
+    // 使用 Date.now() 時間戳，不需要 update()，draw() 自行計算剩餘比例
+    this._effectExpiry  = 0;        // 效果結束的絕對時間戳（ms）
+    this._effectType    = null;     // 'attacker_penalty' | 'garrison_regen' | null
+    this._effectDur     = 700;      // 效果持續時間（ms），與 triggerEffect 同步
+  }
+
+  // ── 被動效果觸發（由 GameScene 呼叫）─────────────────────
+  /**
+   * 在節點上播放一次短暫的視覺閃光，表示某個被動效果剛剛發動。
+   * 使用 Date.now() 時間戳驅動，不需要外部 tick。
+   * @param {'attacker_penalty'|'garrison_regen'} effectType
+   * @param {number} [durationMs=700]
+   */
+  triggerEffect(effectType, durationMs = 700) {
+    this._effectType   = effectType;
+    this._effectDur    = durationMs;
+    this._effectExpiry = Date.now() + durationMs;
   }
 
   // ── 生產狀態 ──────────────────────────────────────────
@@ -117,6 +136,9 @@ export class NodeBuilding {
 
     // ── 3b. 被動效果徽章（右上角小圖示）──
     this._drawPassiveBadge(g, x, y, r);
+
+    // ── 3c. 被動效果觸發閃光（戰鬥結算後短暫出現）──
+    this._drawEffectFlash(g, x, y, r);
 
     // ── 4. 超載外環（橙色脈衝環，currentUnits > maxUnits 時顯示）──
     if (this.currentUnits > this.maxUnits) {
@@ -484,6 +506,53 @@ export class NodeBuilding {
       g.fillStyle(0x44DD88, pulse);
       g.fillRect(bx - 1.5, by - 5.5, 3, 11);  // 縱條
       g.fillRect(bx - 5.5, by - 1.5, 11, 3);  // 橫條
+    }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 被動效果觸發閃光
+  //
+  // 由 triggerEffect() 啟動，依 Date.now() 計算剩餘比例 t（1.0→0.0），
+  // 在節點外圍渲染短暫的彩色擴散環，效果結束後自動消失。
+  //
+  //   attacker_penalty（Tower 被攻擊）
+  //     → 橙紅色外環 + 內環，傳達「弓箭射擊讓攻擊方受損」
+  //   garrison_regen（Castle 守城成功）
+  //     → 翠綠色外環 + 內環，傳達「城堡守住並回補兵力」
+  //
+  // 未來新增 passiveEffect 只需在此加 else if 分支。
+  // ─────────────────────────────────────────────────────
+  _drawEffectFlash(g, x, y, r) {
+    if (!this._effectType) return;
+    const now = Date.now();
+    if (now >= this._effectExpiry) return;
+
+    // t: 1.0（效果剛觸發）→ 0.0（效果結束），線性淡出
+    const t = (this._effectExpiry - now) / this._effectDur;
+
+    if (this._effectType === 'attacker_penalty') {
+      // ── 橙紅護盾感：外環 + 淡填充 ──
+      // 外光暈填充
+      g.fillStyle(0xFF2200, t * 0.16);
+      g.fillCircle(x, y, r + 18);
+      // 外環（粗）
+      g.lineStyle(3 + t * 3, 0xFF3300, t * 0.95);
+      g.strokeCircle(x, y, r + 17);
+      // 內環（細，火花感）
+      g.lineStyle(2, 0xFF8800, t * 0.75);
+      g.strokeCircle(x, y, r + 9);
+
+    } else if (this._effectType === 'garrison_regen') {
+      // ── 翠綠回復感：外環 + 淡填充 ──
+      // 外光暈填充
+      g.fillStyle(0x00FF66, t * 0.13);
+      g.fillCircle(x, y, r + 18);
+      // 外環（粗）
+      g.lineStyle(3 + t * 2, 0x44EE88, t * 0.95);
+      g.strokeCircle(x, y, r + 17);
+      // 內環（細，補血感）
+      g.lineStyle(2, 0xAAFFCC, t * 0.65);
+      g.strokeCircle(x, y, r + 9);
     }
   }
 
