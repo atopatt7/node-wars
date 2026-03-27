@@ -99,6 +99,7 @@ export class InputController {
     this.dragTarget = node;
 
     // 滑過己方節點 → 納入來源列表（不重複、有足夠兵力）
+    // 注意：即使之後這個節點成為目標，pointerup 會自動將它從來源過濾掉
     if (
       node &&
       node.owner === 'player' &&
@@ -118,12 +119,15 @@ export class InputController {
 
     const target = this._getNodeAt(ptr.x, ptr.y);
 
-    // 有效目標：敵方或中立（不能是己方）
-    if (target && target.owner !== 'player') {
-      this._callbacks.onSendTroopsMulti(
-        Array.from(this.selectedSourceNodes),
-        target
-      );
+    // 有效目標：任何存在的節點（敵方、中立、或己方增援）
+    if (target) {
+      // 將 target 本身從來源列表排除（節點不能派兵給自己）
+      const validSources = Array.from(this.selectedSourceNodes).filter(n => n !== target);
+
+      // 至少要有一個有效來源才派兵
+      if (validSources.length > 0) {
+        this._callbacks.onSendTroopsMulti(validSources, target);
+      }
     }
     this.cancelDrag();
   }
@@ -144,13 +148,20 @@ export class InputController {
     const ty = this.currentPointer.y;
     const t  = Date.now();
 
-    const tNode         = this._getNodeAt(tx, ty);
-    const isValidTarget = tNode && tNode.owner !== 'player';
+    const tNode = this._getNodeAt(tx, ty);
+
+    // 有效目標：該節點存在，且在排除它自身後，來源列表中仍有至少一個節點可以出兵
+    const hasValidSources = tNode &&
+      Array.from(this.selectedSourceNodes).some(n => n !== tNode);
+    const isValidTarget = hasValidSources;
 
     // 線條顏色：依目標陣營決定
-    const lineColor = isValidTarget
-      ? (tNode.owner === 'enemy' ? 0xFF5555 : 0xFFDD44)
-      : 0xCCDDFF;
+    let lineColor = 0xCCDDFF;
+    if (isValidTarget) {
+      if (tNode.owner === 'enemy')        lineColor = 0xFF5555;   // 紅：攻擊
+      else if (tNode.owner === 'neutral') lineColor = 0xFFDD44;   // 黃：佔領
+      else                                lineColor = 0x55FF99;   // 綠：增援己方
+    }
 
     // ── 每個來源節點各畫一條線到游標 ──
     for (const src of this.selectedSourceNodes) {
