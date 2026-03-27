@@ -8,6 +8,17 @@ export const GAME_WIDTH  = 480;
 export const GAME_HEIGHT = 854;
 
 // ── 建築類型設定 ──
+//
+// passiveEffect / passiveValue：節點被動能力
+//   null               → 無特殊效果（Village）
+//   'attacker_penalty' → 攻擊方兵力在戰鬥前乘以 passiveValue（Tower 阻箭效果）
+//   'garrison_regen'   → 成功守城後立即回復 passiveValue 兵（Castle 守城韌性）
+//
+// 擴充說明（未來升級/法術系統保留點）：
+//   - passiveEffect 可增加更多類型（如 'production_aura'、'heal_on_capture' 等）
+//   - passiveValue 永遠為純數值，避免結構過複雜
+//   - CombatSystem 以 switch/if 對應 passiveEffect 字串，新增效果只需加分支
+//
 export const NODE_TYPES = {
   VILLAGE: {
     name:              '村莊',
@@ -16,6 +27,9 @@ export const NODE_TYPES = {
     maxUnits:          50,
     defenseMultiplier: 1.0,   // 防禦倍率（攻擊者需 unitCount > defenderUnits * multiplier）
     radius:            32,
+    // 被動效果
+    passiveEffect:     null,  // 無特殊效果，作為標準基準節點
+    passiveValue:      1.0,
   },
   CASTLE: {
     name:              '城堡',
@@ -24,6 +38,9 @@ export const NODE_TYPES = {
     maxUnits:          100,
     defenseMultiplier: 1.5,
     radius:            40,
+    // 被動效果：守城韌性 — 成功守城後立即回復兵力（代表城堡內部快速補員）
+    passiveEffect:     'garrison_regen',
+    passiveValue:      3,     // 每次成功守城後回復 3 兵（最多到 maxUnits）
   },
   TOWER: {
     name:              '箭塔',
@@ -32,6 +49,9 @@ export const NODE_TYPES = {
     maxUnits:          30,
     defenseMultiplier: 2.0,
     radius:            26,
+    // 被動效果：阻箭懲罰 — 攻擊方兵力在結算前打折（代表塔上弓箭手射殺進攻部隊）
+    passiveEffect:     'attacker_penalty',
+    passiveValue:      0.75,  // 攻擊方兵力 × 0.75（損失 25% 才能進入近戰結算）
   },
 };
 

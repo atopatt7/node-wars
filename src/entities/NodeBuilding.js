@@ -44,6 +44,11 @@ export class NodeBuilding {
     this.label             = cfg.label;
     this.typeName          = cfg.name;
 
+    // 節點被動效果（由 CombatSystem 在戰鬥結算時讀取）
+    // null | 'attacker_penalty' | 'garrison_regen' | ...（未來可擴充）
+    this.passiveEffect = cfg.passiveEffect ?? null;
+    this.passiveValue  = cfg.passiveValue  ?? 1.0;
+
     // 生產計時器（毫秒累積）
     this.productionAccumulator = 0;
 
@@ -109,6 +114,9 @@ export class NodeBuilding {
       case 'VILLAGE':
       default:        this._drawVillage(g, x, y, r, col); break;
     }
+
+    // ── 3b. 被動效果徽章（右上角小圖示）──
+    this._drawPassiveBadge(g, x, y, r);
 
     // ── 4. 超載外環（橙色脈衝環，currentUnits > maxUnits 時顯示）──
     if (this.currentUnits > this.maxUnits) {
@@ -434,6 +442,49 @@ export class NodeBuilding {
     g.fillRect(x - r * 0.88, y + r * 0.53, r * 1.76, 7);
     g.fillStyle(col.fill, 0.55);
     g.fillRect(x - r * 0.84, y + r * 0.54, r * 1.68, 3);
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 被動效果徽章（右上角小圖示）
+  // 每種 passiveEffect 對應一個固定圖示：
+  //   attacker_penalty → 紅色向下箭頭（「當心弓箭！」）
+  //   garrison_regen   → 綠色十字（「守城回復」）
+  // 未來新增效果只需在此加 else if 分支
+  // ─────────────────────────────────────────────────────
+  _drawPassiveBadge(g, x, y, r) {
+    if (!this.passiveEffect) return;
+
+    // 徽章位置：右上角，緊貼節點圓邊
+    const bx = x + r * 0.64;
+    const by = y - r * 0.64;
+    const t  = Date.now();
+
+    if (this.passiveEffect === 'attacker_penalty') {
+      // 紅色向下箭頭：代表「塔上弓箭射擊攻擊方」
+      // 脈衝閃動讓玩家注意到
+      const pulse = 0.75 + 0.25 * Math.abs(Math.sin(t * 0.003));
+      // 底部圓形背景
+      g.fillStyle(0x220000, 0.55);
+      g.fillCircle(bx, by, 8);
+      // 箭頭軸
+      g.fillStyle(0xFF3333, pulse);
+      g.fillRect(bx - 1.5, by - 5, 3, 7);
+      // 箭頭尖（向下三角）
+      g.fillTriangle(bx, by + 6, bx - 4.5, by + 1, bx + 4.5, by + 1);
+      // 箭羽（頂部橫線）
+      g.fillRect(bx - 4, by - 6, 8, 2);
+
+    } else if (this.passiveEffect === 'garrison_regen') {
+      // 綠色十字：代表「城堡守城後自動補員」
+      const pulse = 0.80 + 0.20 * Math.abs(Math.sin(t * 0.0025));
+      // 底部圓形背景
+      g.fillStyle(0x002211, 0.55);
+      g.fillCircle(bx, by, 8);
+      // 綠色十字
+      g.fillStyle(0x44DD88, pulse);
+      g.fillRect(bx - 1.5, by - 5.5, 3, 11);  // 縱條
+      g.fillRect(bx - 5.5, by - 1.5, 11, 3);  // 橫條
+    }
   }
 
   // ─────────────────────────────────────────────────────
