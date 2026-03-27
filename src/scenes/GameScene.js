@@ -186,6 +186,8 @@ export class GameScene extends Phaser.Scene {
       if (node) {
         txt.setPosition(node.x, node.y);
         txt.setText(Math.floor(node.currentUnits).toString());
+        // 超載時文字變橙色，回到正常後恢復白色
+        txt.setColor(node.currentUnits > node.maxUnits ? '#FFAA22' : '#FFFFFF');
       }
     }
   }

@@ -21,10 +21,8 @@ export class CombatSystem {
   resolve(troop, target) {
     if (troop.owner === target.owner) {
       // ── 友方增援 ──
-      target.currentUnits = Math.min(
-        target.currentUnits + troop.unitCount,
-        target.maxUnits
-      );
+      // 允許超過 maxUnits（超載），由 ProductionSystem 的衰減機制逐步回收
+      target.currentUnits += troop.unitCount;
       return;
     }
 

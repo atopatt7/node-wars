@@ -47,6 +47,10 @@ export class NodeBuilding {
     // 生產計時器（毫秒累積）
     this.productionAccumulator = 0;
 
+    // 超載衰減計時器（毫秒累積）
+    // 當 currentUnits > maxUnits 時由 ProductionSystem 讀寫，用於計算每秒損失
+    this.overflowDecayAccumulator = 0;
+
     // 視覺狀態
     this.isSelected  = false;
     this.pulseTimer  = 0;           // 選取脈衝動畫計時器（由 ProductionSystem 更新）
@@ -106,7 +110,21 @@ export class NodeBuilding {
       default:        this._drawVillage(g, x, y, r, col); break;
     }
 
-    // ── 4. 選取光圈（白色 + 陣營色雙環）──
+    // ── 4. 超載外環（橙色脈衝環，currentUnits > maxUnits 時顯示）──
+    if (this.currentUnits > this.maxUnits) {
+      const overPulse = 0.55 + 0.45 * Math.abs(Math.sin(t * 0.007));
+      // 外光暈
+      g.fillStyle(0xFF8800, 0.08 + 0.06 * overPulse);
+      g.fillCircle(x, y, r + 14);
+      // 橙色外環
+      g.lineStyle(3, 0xFF8800, overPulse * 0.9);
+      g.strokeCircle(x, y, r + 12);
+      // 內橙環（與陣營環並存，增加層次）
+      g.lineStyle(1.5, 0xFFCC44, overPulse * 0.6);
+      g.strokeCircle(x, y, r + 7);
+    }
+
+    // ── 5. 選取光圈（白色 + 陣營色雙環）──
     if (this.isSelected) {
       const pulse = 0.55 + 0.45 * Math.sin(this.pulseTimer * 0.006);
       g.lineStyle(4, 0xFFFFFF, pulse * 0.9);
@@ -424,12 +442,8 @@ export class NodeBuilding {
   _drawProgressRing(g, col) {
     if (this.owner === 'neutral') return;
 
-    const ratio = this.currentUnits / this.maxUnits;
-    if (ratio <= 0) return;
-
+    const t = Date.now();
     const r = this.radius + 3;
-    const startAngle = -Math.PI / 2;
-    const endAngle   = startAngle + ratio * Math.PI * 2;
 
     // 背景環（暗色底）
     g.lineStyle(3, 0x000000, 0.25);
@@ -437,14 +451,27 @@ export class NodeBuilding {
     g.arc(this.x, this.y, r, 0, Math.PI * 2, false);
     g.strokePath();
 
-    // 進度弧
-    const t = Date.now();
-    const glowAlpha = ratio >= 1
-      ? 0.75 + 0.25 * Math.sin(t * 0.005)  // 滿格脈衝
-      : 0.55;
-    g.lineStyle(3, col.stroke, glowAlpha);
-    g.beginPath();
-    g.arc(this.x, this.y, r, startAngle, endAngle, false);
-    g.strokePath();
+    if (this.currentUnits > this.maxUnits) {
+      // ── 超載：橙色滿環 + 快速脈衝 ──
+      const pulse = 0.7 + 0.3 * Math.abs(Math.sin(t * 0.008));
+      g.lineStyle(3.5, 0xFF8800, pulse);
+      g.beginPath();
+      g.arc(this.x, this.y, r, 0, Math.PI * 2, false);
+      g.strokePath();
+    } else {
+      // ── 正常：陣營色進度弧 ──
+      const ratio = this.currentUnits / this.maxUnits;
+      if (ratio <= 0) return;
+
+      const startAngle = -Math.PI / 2;
+      const endAngle   = startAngle + ratio * Math.PI * 2;
+      const glowAlpha  = ratio >= 1
+        ? 0.75 + 0.25 * Math.sin(t * 0.005)  // 滿格脈衝
+        : 0.55;
+      g.lineStyle(3, col.stroke, glowAlpha);
+      g.beginPath();
+      g.arc(this.x, this.y, r, startAngle, endAngle, false);
+      g.strokePath();
+    }
   }
 }

@@ -114,3 +114,8 @@ export const AI_DIFFICULTY_PROFILES = {
 // ── 送兵比例選項（右鍵或按鈕切換）──
 export const SEND_RATIOS = [0.25, 0.50, 0.75, 1.00];
 export const DEFAULT_SEND_RATIO_INDEX = 1; // 預設 50%
+
+// ── 超載衰減速率（單位/秒）──────────────────────────────
+// 當節點 currentUnits > maxUnits 時，每秒損失此數量的兵力，
+// 直到回到 maxUnits 為止。調高此值衰減更快，調低則更慢。
+export const OVERFLOW_DECAY_RATE = 1; // 單位/秒
