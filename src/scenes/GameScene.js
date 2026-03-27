@@ -99,7 +99,7 @@ export class GameScene extends Phaser.Scene {
         strokeThickness: 4,
         resolution:      2,
       }).setOrigin(0.5).setDepth(12).setVisible(false);
-      this._ftPool.push({ obj, active: false, startY: 0, vy: 0, life: 0, maxLife: 0 });
+      this._ftPool.push({ obj, active: false, startY: 0, vy: 0, life: 0, maxLife: 0, initScale: 1.3 });
     }
 
     // ── 關卡 + 輸入 + UI ──
@@ -137,8 +137,14 @@ export class GameScene extends Phaser.Scene {
       }
     );
     for (const fb of pendingFeedbacks) {
-      fb.node.triggerEffect(fb.event);   // 節點外圈閃光
-      this._spawnFloatingText(fb);       // 浮動數字
+      if (fb.event === 'capture') {
+        // 佔領事件：播放擴散脈衝（triggerCapture），不播放被動效果閃光
+        fb.node.triggerCapture();
+      } else {
+        // 被動效果事件（attacker_penalty / garrison_regen）
+        fb.node.triggerEffect(fb.event);
+      }
+      this._spawnFloatingText(fb);       // 浮動文字（所有 event 類型共用）
     }
 
     // 3b. 更新浮動文字動畫
@@ -275,33 +281,57 @@ export class GameScene extends Phaser.Scene {
     const slot = this._ftPool.find(s => !s.active);
     if (!slot) return;  // 池已滿（同幀大量戰鬥），跳過
 
-    let text, color;
+    let text, color, initScale, vy, maxLife;
+
     if (fb.event === 'attacker_penalty') {
-      // Tower：顯示被削弱的兵力數（紅色，強調損耗）
-      text  = `-${fb.value}`;
-      color = '#FF4433';
+      // Tower：紅色削弱數字
+      text      = `-${fb.value}`;
+      color     = '#FF4433';
+      initScale = 1.3;
+      vy        = -52;
+      maxLife   = 1100;
+
     } else if (fb.event === 'garrison_regen') {
-      // Castle：顯示回復兵力數（翠綠色，強調補員）
-      text  = `+${fb.value}`;
-      color = '#44EE88';
+      // Castle：翠綠回復數字
+      text      = `+${fb.value}`;
+      color     = '#44EE88';
+      initScale = 1.3;
+      vy        = -52;
+      maxLife   = 1100;
+
+    } else if (fb.event === 'capture') {
+      // 佔領：較大文字 + 陣營色 + 停留稍長
+      // 顏色對應新主人陣營，讓玩家一眼感知 ownership 方向
+      text = '占領';
+      const captureColors = {
+        player:  '#7BBFFF',   // 藍方佔領 → 藍白
+        enemy:   '#FF7766',   // 紅方佔領 → 橙紅
+        neutral: '#CCCCDD',   // 中立（理論上不應發生）
+      };
+      color     = captureColors[fb.newOwner] ?? '#FFFFFF';
+      initScale = 1.7;        // 比被動效果文字大，更搶眼
+      vy        = -65;        // 漂移稍快
+      maxLife   = 1350;       // 停留稍長
+
     } else {
       return;
     }
 
     // 浮動起始點：節點正上方（建築頂部外側）
-    const startY = fb.y - fb.node.radius - 12;
+    const startY = fb.y - fb.node.radius - 14;
 
     slot.obj.setPosition(fb.x, startY);
     slot.obj.setText(text);
     slot.obj.setColor(color);
-    slot.obj.setScale(1.3);   // 出現時放大，讓玩家一眼注意到
+    slot.obj.setScale(initScale);
     slot.obj.setAlpha(1);
     slot.obj.setVisible(true);
-    slot.startY  = startY;
-    slot.vy      = -52;       // 向上漂移速度（px/s）
-    slot.life    = 0;
-    slot.maxLife = 1100;      // ms
-    slot.active  = true;
+    slot.startY   = startY;
+    slot.vy       = vy;
+    slot.life     = 0;
+    slot.maxLife  = maxLife;
+    slot.initScale = initScale;   // 記錄初始縮放，供 _updateFloatingTexts 計算彈出動畫
+    slot.active   = true;
   }
 
   /**
@@ -325,8 +355,10 @@ export class GameScene extends Phaser.Scene {
       // 位置：向上漂移
       slot.obj.setY(slot.startY + slot.vy * (slot.life / 1000));
 
-      // 縮放：0~15% 時從 1.3 快速收縮回 1.0，之後保持
-      const scale = t < 0.15 ? 1.3 - (t / 0.15) * 0.3 : 1.0;
+      // 縮放：0~15% 時從 initScale 快速收縮回 1.0，之後保持
+      // initScale 依事件類型不同（攻擊: 1.3, 佔領: 1.7），彈出感等比例放大
+      const is = slot.initScale ?? 1.3;
+      const scale = t < 0.15 ? is - (t / 0.15) * (is - 1.0) : 1.0;
       slot.obj.setScale(scale);
 
       // 透明度：前 50% 保持不透明，後 50% 線性淡出

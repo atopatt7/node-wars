@@ -65,6 +65,11 @@ export class NodeBuilding {
     this._effectExpiry  = 0;        // 效果結束的絕對時間戳（ms）
     this._effectType    = null;     // 'attacker_penalty' | 'garrison_regen' | null
     this._effectDur     = 700;      // 效果持續時間（ms），與 triggerEffect 同步
+
+    // 佔領成功閃光（由 GameScene 在 capture 結算後呼叫 triggerCapture() 設定）
+    // 與 _effectExpiry 獨立，允許同一幀同時展示多種回饋
+    this._captureExpiry = 0;        // 佔領效果結束的絕對時間戳（ms）
+    this._captureDur    = 900;      // 佔領效果持續時間（ms）
   }
 
   // ── 被動效果觸發（由 GameScene 呼叫）─────────────────────
@@ -78,6 +83,17 @@ export class NodeBuilding {
     this._effectType   = effectType;
     this._effectDur    = durationMs;
     this._effectExpiry = Date.now() + durationMs;
+  }
+
+  /**
+   * 播放「節點被佔領」的擴散脈衝閃光。
+   * 使用節點當前 owner 的陣營顏色（在呼叫前 CombatSystem 已更新 owner），
+   * 因此閃光顏色等於新主人的顏色，直觀傳達 ownership 改變方向。
+   * @param {number} [durationMs=900]
+   */
+  triggerCapture(durationMs = 900) {
+    this._captureDur    = durationMs;
+    this._captureExpiry = Date.now() + durationMs;
   }
 
   // ── 生產狀態 ──────────────────────────────────────────
@@ -165,6 +181,10 @@ export class NodeBuilding {
 
     // ── 5. 容量進度環 ──
     this._drawProgressRing(g, col);
+
+    // ── 6. 佔領成功閃光（最頂層）──
+    // 放在最後確保覆蓋所有其他效果，讓玩家第一眼看到 ownership 改變
+    this._drawCaptureFlash(g, x, y, r);
   }
 
   // ─────────────────────────────────────────────────────
@@ -553,6 +573,56 @@ export class NodeBuilding {
       // 內環（細，補血感）
       g.lineStyle(2, 0xAAFFCC, t * 0.65);
       g.strokeCircle(x, y, r + 9);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 佔領成功閃光
+  //
+  // 在節點被佔領（owner 改變）時由 triggerCapture() 啟動。
+  // 因為 CombatSystem 在回傳 feedback 前已更新 target.owner，
+  // 所以這裡直接取 FACTION_COLORS[this.owner] 即可得到新主人的顏色：
+  //   player 佔領 → 藍色擴散環（己方旗幟感）
+  //   enemy 佔領  → 紅色擴散環（警示感）
+  //
+  // 視覺設計：
+  //   t = 1.0（觸發瞬間）→ t = 0.0（900ms後消失）
+  //   第一圈：從節點邊緣向外擴散並淡出（主視覺）
+  //   第二圈：延遲 30% 啟動，略慢跟隨（層次感）
+  //   白色衝擊閃光：僅前 20%（t > 0.8），模擬衝擊瞬間
+  // ─────────────────────────────────────────────────────
+  _drawCaptureFlash(g, x, y, r) {
+    const now = Date.now();
+    if (now >= this._captureExpiry) return;
+
+    // t: 1.0（剛觸發）→ 0.0（效果結束），線性淡出
+    const t = (this._captureExpiry - now) / this._captureDur;
+    const col = FACTION_COLORS[this.owner];  // 新主人的陣營色
+
+    // ── 第一圈：擴散外環 ──────────────────────────────
+    // ringProgress: 0 = 剛開始，1 = 最外層
+    const ringProgress = 1 - t;
+    const ringR = r + 6 + ringProgress * 32;   // r+6 → r+38
+    g.lineStyle(2.5 + t * 2.5, col.stroke, t * 0.88);
+    g.strokeCircle(x, y, ringR);
+
+    // ── 第二圈：延遲 30% 的跟隨環 ─────────────────────
+    if (ringProgress > 0.30) {
+      const t2 = (ringProgress - 0.30) / 0.70;  // 0→1，在第一圈 30% 後啟動
+      const innerR = r + 6 + t2 * 20;           // r+6 → r+26
+      g.lineStyle(1.5, col.fill, (1 - t2) * 0.55);
+      g.strokeCircle(x, y, innerR);
+    }
+
+    // ── 衝擊閃光：前 20%（t: 1.0 → 0.8）─────────────
+    if (t > 0.80) {
+      const flashT = (t - 0.80) / 0.20;   // 1.0→0.0，衝擊後快速消散
+      // 白色衝擊
+      g.fillStyle(0xFFFFFF, flashT * 0.38);
+      g.fillCircle(x, y, r + 13);
+      // 陣營色補光（加強新主人認知）
+      g.fillStyle(col.fill, flashT * 0.22);
+      g.fillCircle(x, y, r + 13);
     }
   }
 

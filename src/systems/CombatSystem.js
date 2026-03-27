@@ -85,8 +85,10 @@ export class CombatSystem {
       target.owner        = troop.owner;
       target.currentUnits = remaining;
       target.resetProductionState();
-      // attacker_penalty feedback 保留；garrison_regen 不在被攻下時觸發
-      return feedback;
+      // 佔領事件：無論是否有 attacker_penalty，capture 優先作為玩家感知的主體
+      return { event: 'capture', node: target,
+               x: target.x, y: target.y,
+               newOwner: troop.owner, value: 0 };
 
     } else {
       // Step 3b：防守方守住，扣除傷亡
@@ -100,7 +102,10 @@ export class CombatSystem {
         target.owner        = troop.owner;
         target.currentUnits = 1;
         target.resetProductionState();
-        return feedback;  // 城堡殭屍倒地，不觸發守城回復
+        // 殭屍保護也是佔領，回傳 capture
+        return { event: 'capture', node: target,
+                 x: target.x, y: target.y,
+                 newOwner: troop.owner, value: 0 };
       }
 
       target.currentUnits = remaining;
