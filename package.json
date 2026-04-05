@@ -1,0 +1,16 @@
+{
+  "name": "node-wars",
+  "version": "1.0.0",
+  "description": "Node capture RTS game - 節點征服即時策略遊戲",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "phaser": "^3.60.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
