@@ -1145,11 +1145,12 @@ export class GameScene extends Phaser.Scene {
     const activeItems = this.itemSystem.getActiveItems();
     if (activeItems.length === 0) {
       // 本局未帶任何道具，不建立 UI
-      this._itemBarG      = null;
-      this._itemIconTexts = null;
-      this._itemNameTexts = null;
-      this._itemZones     = null;
-      this._itemSlotX     = null;
+      this._itemBarG        = null;
+      this._itemIconTexts   = null;
+      this._itemNameTexts   = null;
+      this._itemZones       = null;
+      this._itemSlotX       = null;
+      this._itemPromptText  = null;
       return;
     }
 
@@ -1202,6 +1203,12 @@ export class GameScene extends Phaser.Scene {
       this._itemZones.push(zone);
     }
 
+    // 提示文字：當道具選取後提示玩家選擇目標節點
+    this._itemPromptText = this.add.text(W - 126, H - HUD_BOTTOM + 8, '', {
+      fontSize: '12px', fontFamily: 'Arial, sans-serif',
+      color: '#ffd070', stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5, 0).setDepth(14).setAlpha(0);
+
     this._prevItemState = null;   // dirty flag
     this._updateItemBar();
   }
@@ -1230,15 +1237,20 @@ export class GameScene extends Phaser.Scene {
       const isPend = itemId && itemId === pendingId;
 
       if (!itemId) {
-        // 空槽
-        this._itemBarG.fillStyle(0x0e0b07, 0.75);
+        // 空槽：暗色且不可互動
+        this._itemBarG.fillStyle(0x0e0b07, 0.45);
         this._itemBarG.fillCircle(x, y, 26);
-        this._itemBarG.lineStyle(1, 0x3a2e1a, 0.45);
+        this._itemBarG.lineStyle(1, 0x2a1e08, 0.30);
         this._itemBarG.strokeCircle(x, y, 26);
-        this._itemIconTexts[i].setText('');
-        this._itemNameTexts[i].setText('');
+        this._itemIconTexts[i].setText('').setAlpha(0.25);
+        this._itemNameTexts[i].setText('').setAlpha(0.25);
+        // 空槽不可點擊
+        this._itemZones[i].disableInteractive();
         continue;
       }
+
+      // 有道具：恢復互動
+      this._itemZones[i].setInteractive({ useHandCursor: true });
 
       const data   = this.itemSystem.getItemData(itemId);
       const fill   = isPend ? 0xb8922a : 0x1a1108;
@@ -1260,6 +1272,21 @@ export class GameScene extends Phaser.Scene {
       // 名稱截短至 4 字避免溢出
       const shortName = (data?.name ?? itemId).slice(0, 4);
       this._itemNameTexts[i].setText(shortName).setAlpha(isPend ? 1 : 0.75);
+    }
+
+    // ── 提示文字：選取道具後顯示目標提示 ──────────────────
+    if (this._itemPromptText) {
+      if (pendingId) {
+        const targetType = this.itemSystem.getTargetType(pendingId);
+        const prompt = targetType === 'own'
+          ? '▼ 選擇我方節點'
+          : targetType === 'enemy'
+            ? '▼ 選擇敵方節點'
+            : '▼ 選擇目標節點';
+        this._itemPromptText.setText(prompt).setAlpha(0.92);
+      } else {
+        this._itemPromptText.setAlpha(0);
+      }
     }
   }
 

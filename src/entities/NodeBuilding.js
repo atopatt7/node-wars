@@ -1239,6 +1239,76 @@ export class NodeBuilding {
         g.fillCircle(x, y, r + 10);
       }
     }
+
+    // ── Dragon Oil（龍息火油）：橙色慢速燃燒環 ──────────
+    // 道具效果：敵方節點生兵速率 ×0.4，持續 8 秒
+    // 視覺：橙色 + 琥珀色雙環，緩慢逆時針旋轉，搭配低頻脈衝
+    if (now < (this._slowExpiry ?? 0)) {
+      const slowDur   = 8_000;
+      const elapsed   = slowDur - (this._slowExpiry - now);
+      const t         = Math.max(0, 1 - elapsed / slowDur);          // 0→1 淡出
+      const fadeAlpha = Math.min(1, (this._slowExpiry - now) / 1000); // 最後 1 秒淡出
+      const pulse     = this._isMobile ? 0.80 : 0.65 + 0.35 * Math.abs(Math.sin(now * 0.0014));
+      const rot       = -(now * 0.0022) % (Math.PI * 2);             // 逆時針旋轉
+
+      // 外層橙色暈染
+      g.fillStyle(0xFF6600, fadeAlpha * pulse * 0.09);
+      g.fillCircle(x, y, r + 20);
+
+      // 主橙色環（粗）
+      g.lineStyle(3, 0xFF6600, fadeAlpha * pulse * 0.90);
+      g.strokeCircle(x, y, r + 14);
+
+      // 內側琥珀色環
+      g.lineStyle(1.5, 0xFFAA00, fadeAlpha * pulse * 0.55);
+      g.strokeCircle(x, y, r + 8);
+
+      // 6 個火焰粒子點（緩慢旋轉）
+      for (let i = 0; i < 6; i++) {
+        const a  = rot + (i / 6) * Math.PI * 2;
+        const pr = r + 14;
+        g.fillStyle(0xFFCC44, fadeAlpha * pulse * 0.85);
+        g.fillCircle(x + Math.cos(a) * pr, y + Math.sin(a) * pr, 2.5);
+      }
+
+      // 節點內部橙色潮染（「燃燒中」感）
+      g.fillStyle(0xFF6600, fadeAlpha * 0.06);
+      g.fillCircle(x, y, r);
+    }
+
+    // ── Void Seal（虛空封印）：紫色封印環 ───────────────
+    // 道具效果：敵方節點生兵完全封鎖，持續 6 秒
+    // 視覺：紫色粗環 + 慢速脈衝六邊封印符文點，「靜止/凍結」感
+    if (now < (this._productionBlockExpiry ?? 0)) {
+      const sealDur   = 6_000;
+      const fadeAlpha = Math.min(1, (this._productionBlockExpiry - now) / 800); // 最後 0.8 秒淡出
+      const pulse     = this._isMobile ? 0.80 : 0.55 + 0.45 * Math.abs(Math.sin(now * 0.0009));
+      const rot       = (now * 0.0008) % (Math.PI * 2);  // 極慢順時針
+
+      // 外層紫色暈染
+      g.fillStyle(0x8800CC, fadeAlpha * pulse * 0.12);
+      g.fillCircle(x, y, r + 22);
+
+      // 主紫色封印環（厚實感）
+      g.lineStyle(4, 0xAA22FF, fadeAlpha * pulse * 0.92);
+      g.strokeCircle(x, y, r + 15);
+
+      // 中間虛線感：第二道細環
+      g.lineStyle(1.5, 0xCC88FF, fadeAlpha * pulse * 0.50);
+      g.strokeCircle(x, y, r + 10);
+
+      // 6 個封印符文點（六芒星佈局，幾乎靜止）
+      for (let i = 0; i < 6; i++) {
+        const a  = rot + (i / 6) * Math.PI * 2;
+        const pr = r + 15;
+        g.fillStyle(0xEE88FF, fadeAlpha * pulse * 0.90);
+        g.fillCircle(x + Math.cos(a) * pr, y + Math.sin(a) * pr, 3);
+      }
+
+      // 節點內部暗紫色潮染（「被壓制」感）
+      g.fillStyle(0x6600AA, fadeAlpha * 0.10);
+      g.fillCircle(x, y, r);
+    }
   }
 
   // ─────────────────────────────────────────────────────
