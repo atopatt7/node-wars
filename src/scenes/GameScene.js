@@ -30,6 +30,7 @@ import { MovementSystem }  from '../systems/MovementSystem.js';
 import { ProductionSystem }from '../systems/ProductionSystem.js';
 import { SpellSystem }     from '../systems/SpellSystem.js';
 import { WinLoseSystem }   from '../systems/WinLoseSystem.js';
+import { ItemSystem }      from '../systems/ItemSystem.js';
 import { audioManager }    from '../systems/AudioManager.js';
 import { SaveSystem }      from '../systems/SaveSystem.js';
 import { UIController }             from '../ui/UIController.js';
@@ -79,6 +80,7 @@ export class GameScene extends Phaser.Scene {
     );
     this.combatSystem     = new CombatSystem();
     this.spellSystem      = new SpellSystem();
+    this.itemSystem       = new ItemSystem(SaveSystem.getEquippedItems());
 
     // ── 輸入控制器 ──
     this.inputController = new InputController(
@@ -137,19 +139,27 @@ export class GameScene extends Phaser.Scene {
     // 法術按鈕 callback（必須在 uiController.setup() 後，因為 _spellSlots 在那裡建立）
     this.uiController.setupSpells((spellId) => this._onSpellButtonClick(spellId));
 
-    // 右鍵取消待施放法術
+    // 道具欄（若本局攜帶道具則顯示於底部 HUD 右側）
+    this._createItemBar();
+
+    // 右鍵取消待施放法術 / 道具
     this.input.on('pointerdown', (ptr) => {
-      if (ptr.rightButtonDown() && this.spellSystem.getPendingSpell()) {
-        this.spellSystem.cancelPending();
+      if (ptr.rightButtonDown()) {
+        if (this.spellSystem.getPendingSpell()) this.spellSystem.cancelPending();
+        if (this.itemSystem.hasPendingItem())   { this.itemSystem.cancelPending(); this._updateItemBar(); }
       }
     });
 
-    // 法術施放：點擊節點時若有待施放法術，執行施放
+    // 法術 / 道具施放：點擊節點時，依據待施放狀態決定執行法術還是使用道具
     this.input.on('pointerup', (ptr) => {
-      if (!this.spellSystem.getPendingSpell()) return;
       if (ptr.rightButtonDown()) return;
       const node = this.nodes.find(n => n.containsPoint(ptr.x, ptr.y));
-      if (node) this._tryCastSpell(node);
+      if (!node) return;
+      if (this.itemSystem.hasPendingItem()) {
+        this._tryUseItem(node);
+      } else if (this.spellSystem.getPendingSpell()) {
+        this._tryCastSpell(node);
+      }
     });
 
     // 淡入
@@ -221,6 +231,9 @@ export class GameScene extends Phaser.Scene {
     // 5. 法術系統更新（魔力回復 + 冷卻計時）
     this.spellSystem.update(delta);
     this.uiController.updateSpellBar(this.spellSystem);
+
+    // 5b. 道具欄更新（只在有變化時重繪，由 _updateItemBar 內部判斷）
+    this._updateItemBar();
 
     // 6. 重繪動態層
     this._draw();
@@ -540,6 +553,9 @@ export class GameScene extends Phaser.Scene {
     // 光環顏色 = 各法術代表色（SPELL_CONFIG.color）
     // 光環繪製在所有節點之上，因此不需修改 NodeBuilding。
     this._drawSpellTargetHighlight(g);
+
+    // ── 道具目標合法性高亮（金色脈衝環）──────────────────────
+    this._drawItemTargetHighlight(g);
 
     // 同步節點上方的兵力數字 + 升級費用提示（O(1) Map 查找）
     for (const entry of this.nodeTexts) {
@@ -876,6 +892,30 @@ export class GameScene extends Phaser.Scene {
       vy        = -55;
       maxLife   = 2200;
 
+    } else if (fb.event === 'item_fortify') {
+      // 鐵衛壁壘：金色盾牌 + 持續秒數
+      text      = `⛨ 防禦+${fb.value}s`;
+      color     = '#c9a84c';
+      initScale = 1.6;
+      vy        = -70;
+      maxLife   = 1300;
+
+    } else if (fb.event === 'item_slow') {
+      // 龍息火油：橙色火焰 + 持續秒數
+      text      = `🔥 緩速${fb.value}s`;
+      color     = '#FF7722';
+      initScale = 1.6;
+      vy        = -70;
+      maxLife   = 1300;
+
+    } else if (fb.event === 'item_block') {
+      // 虛空封印：紫色 + 持續秒數
+      text      = `◈ 封鎖${fb.value}s`;
+      color     = '#9B5AEE';
+      initScale = 1.6;
+      vy        = -70;
+      maxLife   = 1300;
+
     } else {
       return;
     }
@@ -1090,6 +1130,225 @@ export class GameScene extends Phaser.Scene {
     }
     for (let y = 0; y <= H; y += step) {
       g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.strokePath();
+    }
+  }
+
+  // ── 道具欄 HUD（底部右側，最多 3 格）────────────────────
+  //
+  // 布局：位於底部法術欄右方，法術按鈕佔 W*[0.22,0.50,0.78]，
+  // 道具槽從 W-194 起排列（60px 間距），右對齊至 W-40。
+  // 僅在本局攜帶道具（equippedItems 非空）時顯示；
+  // 若本局未帶任何道具，_itemBarG 保持 null，所有方法空操作。
+  // ──────────────────────────────────────────────────────
+
+  _createItemBar() {
+    const activeItems = this.itemSystem.getActiveItems();
+    if (activeItems.length === 0) {
+      // 本局未帶任何道具，不建立 UI
+      this._itemBarG      = null;
+      this._itemIconTexts = null;
+      this._itemNameTexts = null;
+      this._itemZones     = null;
+      this._itemSlotX     = null;
+      return;
+    }
+
+    const W    = this.cameras.main.width;
+    const H    = this.cameras.main.height;
+    const btnY = H - 51;   // 與法術按鈕同一高度
+
+    // 3 個槽的 X 中心（右對齊，間距 68px）
+    this._itemSlotX = [W - 194, W - 126, W - 58];
+    this._itemSlotY = btnY;
+
+    // 分隔線（法術欄與道具欄之間）
+    const divG = this.add.graphics().setDepth(11);
+    divG.lineStyle(1, 0xb8922a, 0.25);
+    divG.beginPath();
+    divG.moveTo(W - 222, H - HUD_BOTTOM + 4);
+    divG.lineTo(W - 222, H - 6);
+    divG.strokePath();
+
+    // 「道具」小標籤
+    this.add.text(W - 208, H - HUD_BOTTOM + 6, '道具', {
+      fontSize: '11px', fontFamily: 'Arial, sans-serif', color: '#b8922a',
+    }).setOrigin(0, 0).setAlpha(0.55).setDepth(11);
+
+    // 道具圖示 + 名稱文字（3 個固定槽）
+    this._itemBarG      = this.add.graphics().setDepth(12);
+    this._itemIconTexts = [];
+    this._itemNameTexts = [];
+    this._itemZones     = [];
+
+    for (let i = 0; i < 3; i++) {
+      const x = this._itemSlotX[i];
+
+      const iconTxt = this.add.text(x, btnY, '', {
+        fontSize: '22px',
+      }).setOrigin(0.5).setDepth(14);
+
+      const nameTxt = this.add.text(x, btnY + 36, '', {
+        fontSize: '11px', fontFamily: 'Arial, sans-serif', color: '#c9a84c',
+      }).setOrigin(0.5).setDepth(14);
+
+      const zone = this.add.zone(x, btnY, 58, 58).setDepth(16).setInteractive({ useHandCursor: true });
+      zone.on('pointerup', () => {
+        const items = this.itemSystem.getActiveItems();
+        if (i < items.length) this._onItemButtonClick(items[i]);
+      });
+
+      this._itemIconTexts.push(iconTxt);
+      this._itemNameTexts.push(nameTxt);
+      this._itemZones.push(zone);
+    }
+
+    this._prevItemState = null;   // dirty flag
+    this._updateItemBar();
+  }
+
+  /**
+   * 每幀呼叫：若道具欄狀態改變則重繪（dirty flag 最佳化）。
+   * 無道具欄時（_itemBarG === null）為空操作。
+   */
+  _updateItemBar() {
+    if (!this._itemBarG) return;
+
+    const items     = this.itemSystem.getActiveItems();
+    const pendingId = this.itemSystem.getPendingItem();
+
+    // 用 JSON 做 dirty 判斷（items 少量，開銷可忽略）
+    const stateKey = JSON.stringify(items) + '|' + (pendingId ?? '');
+    if (stateKey === this._prevItemState) return;
+    this._prevItemState = stateKey;
+
+    this._itemBarG.clear();
+
+    for (let i = 0; i < 3; i++) {
+      const x      = this._itemSlotX[i];
+      const y      = this._itemSlotY;
+      const itemId = items[i] ?? null;
+      const isPend = itemId && itemId === pendingId;
+
+      if (!itemId) {
+        // 空槽
+        this._itemBarG.fillStyle(0x0e0b07, 0.75);
+        this._itemBarG.fillCircle(x, y, 26);
+        this._itemBarG.lineStyle(1, 0x3a2e1a, 0.45);
+        this._itemBarG.strokeCircle(x, y, 26);
+        this._itemIconTexts[i].setText('');
+        this._itemNameTexts[i].setText('');
+        continue;
+      }
+
+      const data   = this.itemSystem.getItemData(itemId);
+      const fill   = isPend ? 0xb8922a : 0x1a1108;
+      const border = isPend ? 0xffd070 : 0x8a6a22;
+      const bAlpha = isPend ? 1.0      : 0.75;
+
+      // 選取時：額外外圈光環
+      if (isPend) {
+        this._itemBarG.lineStyle(1.5, 0xffd070, 0.35);
+        this._itemBarG.strokeCircle(x, y, 32);
+      }
+
+      this._itemBarG.fillStyle(fill, 1);
+      this._itemBarG.fillCircle(x, y, 26);
+      this._itemBarG.lineStyle(isPend ? 2.5 : 1.5, border, bAlpha);
+      this._itemBarG.strokeCircle(x, y, 26);
+
+      this._itemIconTexts[i].setText(data?.badge ?? '◈').setAlpha(1);
+      // 名稱截短至 4 字避免溢出
+      const shortName = (data?.name ?? itemId).slice(0, 4);
+      this._itemNameTexts[i].setText(shortName).setAlpha(isPend ? 1 : 0.75);
+    }
+  }
+
+  // ── 道具按鈕點擊 ─────────────────────────────────────────
+
+  _onItemButtonClick(itemId) {
+    if (this.isGameOver || this.isPaused) return;
+    // 選取道具時取消待施放法術（兩者互斥）
+    if (this.spellSystem.getPendingSpell()) this.spellSystem.cancelPending();
+    this.itemSystem.selectItem(itemId);
+    this._updateItemBar();
+  }
+
+  // ── 道具使用 ─────────────────────────────────────────────
+
+  /**
+   * 玩家在待施放道具狀態下點擊節點時觸發。
+   * @param {import('../entities/NodeBuilding.js').NodeBuilding} node
+   */
+  _tryUseItem(node) {
+    if (this.isGameOver || this.isPaused) return;
+
+    const result = this.itemSystem.useItem(node);
+    if (!result) return;
+
+    if (!result.success) {
+      this._spawnFloatingText({
+        event: 'spell_invalid',
+        node,
+        x:     node.x,
+        y:     node.y,
+        value: 0,
+        msg:   result.reason === 'not_implemented' ? '尚未實作' : '目標無效',
+      });
+      this.cameras.main.shake(90, 0.003);
+      this._updateItemBar();
+      return;
+    }
+
+    // ── 成功使用 ──
+    if (result.event === 'item_fortify')  audioManager.play('fortify');
+    else if (result.event === 'item_slow')  audioManager.play('haste');    // 借用正面音效
+    else if (result.event === 'item_block') audioManager.play('meteor');   // 借用負面音效
+
+    this._spawnFloatingText({
+      event: result.event,
+      node:  result.node,
+      x:     result.node.x,
+      y:     result.node.y,
+      value: result.value,
+    });
+    this._updateItemBar();
+  }
+
+  // ── 道具目標合法性高亮（金色脈衝環）────────────────────
+  //
+  // 等待施放道具時，在合法目標節點外圍疊加金/銅色脈衝光環，
+  // 視覺語言與法術高亮保持一致但使用金色區分道具來源。
+  // ────────────────────────────────────────────────────
+
+  _drawItemTargetHighlight(g) {
+    if (!this.itemSystem) return;
+    const pendingId = this.itemSystem.getPendingItem();
+    if (!pendingId) return;
+
+    const targetType = this.itemSystem.getTargetType(pendingId);
+    const t          = this._now || Date.now();
+    const pulse      = 0.50 + 0.50 * Math.abs(Math.sin(t * 0.0042));
+
+    for (const node of this.nodes) {
+      const isValid = targetType === 'own'
+        ? node.owner === 'player'
+        : node.owner !== 'player';   // enemy 或 neutral
+
+      if (!isValid) continue;
+
+      const r = node.radius;
+
+      // 金/銅色填充光暈
+      g.fillStyle(0xb8922a, pulse * 0.10);
+      g.fillCircle(node.x, node.y, r + 16);
+
+      // 外環（金色輪廓）
+      g.lineStyle(1.5, 0xb8922a, pulse * 0.55);
+      g.strokeCircle(node.x, node.y, r + 22);
+
+      // 內環（亮金，主要提示環）
+      g.lineStyle(2.5, 0xffd070, pulse * 0.88);
+      g.strokeCircle(node.x, node.y, r + 16);
     }
   }
 }

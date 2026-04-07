@@ -80,9 +80,18 @@ export class ProductionSystem {
     // 重置超載累積器（確保下次超載從 0 開始計算）
     node.overflowDecayAccumulator = 0;
 
+    // 龍息火油 debuff：_productionBlockExpiry 封鎖生兵（優先級最高）
+    const now         = Date.now();
+    const blockActive = now < (node._productionBlockExpiry ?? 0);
+    if (blockActive) return;   // 封鎖期間完全不生兵，也不累積計時器
+
     // Haste buff：若 _hasteExpiry 未到期，生兵速率乘以 2.5
-    const hasteActive   = Date.now() < (node._hasteExpiry ?? 0);
-    const effectiveRate = hasteActive ? node.productionRate * 2.5 : node.productionRate;
+    // 龍息火油 slow：若 _slowExpiry 未到期，生兵速率乘以 0.4
+    const hasteActive   = now < (node._hasteExpiry ?? 0);
+    const slowActive    = now < (node._slowExpiry  ?? 0);
+    const effectiveRate = hasteActive ? node.productionRate * 2.5
+                        : slowActive  ? node.productionRate * 0.4
+                        : node.productionRate;
     const msPerUnit     = 1000 / effectiveRate;
     node.productionAccumulator += delta;
 

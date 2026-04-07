@@ -32,8 +32,9 @@
 const SAVE_KEY     = 'nodeWars_v1_completed';
 const UNLOCK_KEY   = 'nodeWars_v1_maxUnlocked';
 const FAIL_KEY     = 'nodeWars_v1_failCounts';   // 防卡關：各關失敗次數
-const CURRENCY_KEY = 'nodeWars_v1_currency';     // { gold, arcane }
-const OWNED_KEY    = 'nodeWars_v1_ownedItems';   // { [itemId]: count }
+const CURRENCY_KEY  = 'nodeWars_v1_currency';     // { gold, arcane }
+const OWNED_KEY     = 'nodeWars_v1_ownedItems';   // { [itemId]: count }
+const EQUIPPED_KEY  = 'nodeWars_v1_equipped';     // string[] — 最多 3 個 itemId
 
 export const SaveSystem = {
   // ── 完成記錄 ──────────────────────────────────────
@@ -249,12 +250,56 @@ export const SaveSystem = {
   },
 
   /**
+   * 減少指定道具的持有數量（-1）。數量歸零時自動移除欄位。
+   * 道具在戰場被使用後呼叫，確保消耗正確扣除。
+   * @param {string} id
+   */
+  removeOwnedItem(id) {
+    try {
+      const data = this.getOwnedItems();
+      if (!data[id] || data[id] <= 0) return;
+      data[id]--;
+      if (data[id] === 0) delete data[id];
+      localStorage.setItem(OWNED_KEY, JSON.stringify(data));
+    } catch {}
+  },
+
+  /**
    * 取得所有持有道具的總數量。
    * @returns {number}
    */
   getTotalOwnedCount() {
     const data = this.getOwnedItems();
     return Object.values(data).reduce((sum, v) => sum + v, 0);
+  },
+
+  // ── 裝備選擇 ──────────────────────────────────────────
+
+  /**
+   * 取得玩家選擇本次攜帶的道具 ID 清單（最多 3 格）。
+   * @returns {string[]}
+   */
+  getEquippedItems() {
+    try {
+      const raw = localStorage.getItem(EQUIPPED_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(id => typeof id === 'string').slice(0, 3);
+        }
+      }
+    } catch {}
+    return [];
+  },
+
+  /**
+   * 儲存本次攜帶道具選擇（最多 3 格）。
+   * @param {string[]} ids
+   */
+  setEquippedItems(ids) {
+    try {
+      localStorage.setItem(EQUIPPED_KEY, JSON.stringify(ids.slice(0, 3)));
+    } catch {}
   },
 
   // ── 清除 ──────────────────────────────────────────
@@ -269,6 +314,7 @@ export const SaveSystem = {
       localStorage.removeItem(FAIL_KEY);
       localStorage.removeItem(CURRENCY_KEY);
       localStorage.removeItem(OWNED_KEY);
+      localStorage.removeItem(EQUIPPED_KEY);
     } catch {
       // 靜默忽略
     }

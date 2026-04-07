@@ -24,6 +24,7 @@
 import { LEVELS, CHAPTERS } from '../data/levels.js';
 import { SaveSystem }        from '../systems/SaveSystem.js';
 import { audioManager }      from '../systems/AudioManager.js';
+import { SHOP_ITEMS }        from '../systems/ShopSystem.js';
 
 // ── 佈局常數 ────────────────────────────────────────────────────
 const TITLE_H  = 72;    // 頁首高度
@@ -526,10 +527,16 @@ export class LevelSelectScene extends Phaser.Scene {
       if (this._wasDrag) return;
       if (ptr.y < this._safeTop || ptr.y > this._safeBottom) return;
       audioManager.play('ui_click');
-      this.cameras.main.fadeOut(250, 0, 0, 0);
-      this.cameras.main.once('camerafadeoutcomplete', () => {
-        this.scene.start('GameScene', { levelId: level.id });
-      });
+      // 顯示戰前準備面板（持有道具時），否則直接開始
+      const ownedCount = SaveSystem.getTotalOwnedCount();
+      if (ownedCount > 0) {
+        this._showPrepPanel(level.id);
+      } else {
+        this.cameras.main.fadeOut(250, 0, 0, 0);
+        this.cameras.main.once('camerafadeoutcomplete', () => {
+          this.scene.start('GameScene', { levelId: level.id });
+        });
+      }
     });
 
     sub.add(children);
@@ -541,5 +548,195 @@ export class LevelSelectScene extends Phaser.Scene {
       targets: sub, alpha: 1, scaleX: 1, scaleY: 1,
       duration: 180, delay: staggerIdx * 30, ease: 'Quad.easeOut',
     });
+  }
+
+  // ── 戰前準備面板 ──────────────────────────────────────────────
+  //
+  // 選關後呼叫（當玩家持有道具時）。
+  // 顯示模態覆蓋層 + 道具卡片清單，讓玩家選擇最多 3 個道具攜帶入場。
+  // 選完後儲存至 SaveSystem.setEquippedItems()，再淡出進入 GameScene。
+  //
+  // 若持有 0 個道具，直接進入遊戲（由 _addCard 判斷跳過此方法）。
+  // ─────────────────────────────────────────────────────────────
+
+  _showPrepPanel(levelId) {
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+
+    // 取得持有道具清單
+    const owned     = SaveSystem.getOwnedItems();
+    const ownedList = SHOP_ITEMS.filter(item => (owned[item.id] ?? 0) > 0);
+
+    // 預載上次裝備選擇（過濾掉已耗盡的道具）
+    let selected = SaveSystem.getEquippedItems().filter(id => (owned[id] ?? 0) > 0);
+
+    // ── 全螢幕暗色遮罩 ────────────────────────────────────────
+    const overlay = this.add.graphics().setDepth(18);
+    overlay.fillStyle(0x000000, 0.72);
+    overlay.fillRect(0, 0, W, H);
+    overlay.setInteractive();   // 吸收所有點擊，防止穿透選關捲動
+
+    const close = () => {
+      overlay.destroy();
+      panel.destroy(true);
+    };
+
+    // ── 面板容器 ──────────────────────────────────────────────
+    const PW  = 640;
+    const PH  = ownedList.length > 0 ? 380 : 240;
+    const panel = this.add.container(W / 2, H / 2).setDepth(20);
+
+    // 背景
+    const bg = this.add.graphics();
+    bg.fillStyle(0x08060 + 0x4, 1);
+    bg.fillStyle(0x080604, 1);
+    bg.fillRoundedRect(-PW / 2, -PH / 2, PW, PH, 8);
+    bg.lineStyle(1.5, 0xb8922a, 0.85);
+    bg.strokeRoundedRect(-PW / 2, -PH / 2, PW, PH, 8);
+    // 頂部金條
+    bg.fillStyle(0xb8922a, 0.65);
+    bg.fillRect(-PW / 2, -PH / 2, PW, 2);
+    panel.add(bg);
+
+    // 標題 + 說明
+    panel.add(this.add.text(0, -PH / 2 + 18, '戰前準備', {
+      fontSize: '22px', fontFamily: 'Arial Black, sans-serif', color: '#c9a84c',
+    }).setOrigin(0.5, 0));
+
+    panel.add(this.add.text(0, -PH / 2 + 52, '選擇本次攜帶道具（最多 3 個）', {
+      fontSize: '12px', fontFamily: 'Arial, sans-serif', color: '#8a6a22',
+    }).setOrigin(0.5, 0));
+
+    const countTxt = this.add.text(0, -PH / 2 + 72, `已選：${selected.length} / 3`, {
+      fontSize: '13px', fontFamily: 'Arial, sans-serif', color: '#c9a84c',
+    }).setOrigin(0.5, 0);
+    panel.add(countTxt);
+
+    // ── 道具卡片 ──────────────────────────────────────────────
+    const ITEM_W   = 128;
+    const ITEM_H   = 72;
+    const ITEM_GAP = 14;
+    const redrawFns = [];
+
+    if (ownedList.length === 0) {
+      panel.add(this.add.text(0, -10, '尚無道具\n前往軍備商店購買後即可攜帶', {
+        fontSize: '15px', fontFamily: 'Arial, sans-serif',
+        color: '#594d38', align: 'center',
+      }).setOrigin(0.5));
+    } else {
+      const cols    = Math.min(ownedList.length, 4);
+      const totalW  = cols * (ITEM_W + ITEM_GAP) - ITEM_GAP;
+      const startX  = -totalW / 2 + ITEM_W / 2;
+      const rowTop  = -PH / 2 + 108;
+
+      ownedList.forEach((item, idx) => {
+        const col = idx % 4;
+        const row = Math.floor(idx / 4);
+        const cx  = startX + col * (ITEM_W + ITEM_GAP);
+        const cy  = rowTop + ITEM_H / 2 + row * (ITEM_H + ITEM_GAP);
+
+        const cardG = this.add.graphics();
+
+        const draw = () => {
+          cardG.clear();
+          const isSel = selected.includes(item.id);
+          cardG.fillStyle(isSel ? 0x1c140a : 0x0d0a07, 1);
+          cardG.fillRoundedRect(cx - ITEM_W / 2, cy - ITEM_H / 2, ITEM_W, ITEM_H, 4);
+          if (isSel) {
+            cardG.fillStyle(0xffd070, 0.07);
+            cardG.fillRoundedRect(cx - ITEM_W / 2, cy - ITEM_H / 2, ITEM_W, ITEM_H, 4);
+          }
+          cardG.lineStyle(isSel ? 2 : 1, isSel ? 0xffd070 : 0x4a3a1a, isSel ? 1.0 : 0.50);
+          cardG.strokeRoundedRect(cx - ITEM_W / 2, cy - ITEM_H / 2, ITEM_W, ITEM_H, 4);
+        };
+        draw();
+        redrawFns.push(draw);
+
+        const badgeTxt = this.add.text(cx, cy - 14, item.badge || '◈', {
+          fontSize: '20px',
+        }).setOrigin(0.5);
+
+        const nameTxt = this.add.text(cx, cy + 14, item.name, {
+          fontSize: '10px', fontFamily: 'Arial, sans-serif', color: '#c9a84c',
+        }).setOrigin(0.5);
+
+        const countBadge = this.add.text(cx + ITEM_W / 2 - 6, cy - ITEM_H / 2 + 7, `×${owned[item.id]}`, {
+          fontSize: '9px', color: '#8a6a22',
+        }).setOrigin(1, 0);
+
+        cardG.setInteractive(
+          new Phaser.Geom.Rectangle(cx - ITEM_W / 2, cy - ITEM_H / 2, ITEM_W, ITEM_H),
+          Phaser.Geom.Rectangle.Contains
+        );
+        cardG.on('pointerup', () => {
+          if (selected.includes(item.id)) {
+            selected = selected.filter(id => id !== item.id);
+            audioManager.play('ui_hover');
+          } else if (selected.length < 3) {
+            selected.push(item.id);
+            audioManager.play('ui_click');
+          } else {
+            // 已達上限：播放拒絕音效
+            audioManager.play('ui_hover');
+            return;
+          }
+          redrawFns.forEach(fn => fn());
+          countTxt.setText(`已選：${selected.length} / 3`);
+        });
+
+        panel.add([cardG, badgeTxt, nameTxt, countBadge]);
+      });
+    }
+
+    // ── 按鈕列 ────────────────────────────────────────────────
+    const BTN_Y  = PH / 2 - 38;
+
+    // 取消按鈕
+    const cancelG = this.add.graphics();
+    cancelG.fillStyle(0x18120a, 1);
+    cancelG.fillRoundedRect(-PW / 2 + 24, BTN_Y - 22, 120, 44, 4);
+    cancelG.lineStyle(1, 0x4a3a1a, 0.60);
+    cancelG.strokeRoundedRect(-PW / 2 + 24, BTN_Y - 22, 120, 44, 4);
+    const cancelTxt = this.add.text(-PW / 2 + 24 + 60, BTN_Y, '取消', {
+      fontSize: '15px', fontFamily: 'Arial, sans-serif', color: '#8a6a22',
+    }).setOrigin(0.5);
+    cancelG.setInteractive(
+      new Phaser.Geom.Rectangle(-PW / 2 + 24, BTN_Y - 22, 120, 44),
+      Phaser.Geom.Rectangle.Contains
+    );
+    cancelG.on('pointerup', () => { audioManager.play('ui_click'); close(); });
+    panel.add([cancelG, cancelTxt]);
+
+    // 出征按鈕
+    const goG = this.add.graphics();
+    const drawGoBtn = (hover = false) => {
+      goG.clear();
+      goG.fillStyle(hover ? 0xcfa84c : 0xb8922a, 1);
+      goG.fillRoundedRect(PW / 2 - 24 - 180, BTN_Y - 22, 180, 44, 4);
+    };
+    drawGoBtn();
+    const goTxt = this.add.text(PW / 2 - 24 - 90, BTN_Y, '出征 →', {
+      fontSize: '18px', fontFamily: 'Arial Black, sans-serif', color: '#100b04',
+    }).setOrigin(0.5);
+    goG.setInteractive(
+      new Phaser.Geom.Rectangle(PW / 2 - 24 - 180, BTN_Y - 22, 180, 44),
+      Phaser.Geom.Rectangle.Contains
+    );
+    goG.on('pointerover', () => drawGoBtn(true));
+    goG.on('pointerout',  () => drawGoBtn(false));
+    goG.on('pointerup', () => {
+      audioManager.play('ui_click');
+      SaveSystem.setEquippedItems(selected);
+      close();
+      this.cameras.main.fadeOut(250, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => {
+        this.scene.start('GameScene', { levelId });
+      });
+    });
+    panel.add([goG, goTxt]);
+
+    // 淡入面板
+    panel.setAlpha(0);
+    this.tweens.add({ targets: panel, alpha: 1, duration: 180, ease: 'Quad.easeOut' });
   }
 }
