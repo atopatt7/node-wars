@@ -1,6 +1,7 @@
 # Node Wars ｜ 節點征服
 
-> 2D 即時策略網頁遊戲，Phaser 3 驅動，支援 iOS / Android / 桌面
+> 2D 即時策略網頁遊戲 — 佔領所有節點，終結虛空的侵蝕。
+> Phaser 3 + Vite 驅動，支援桌機 / iOS 橫向 / 手機橫向。
 
 ---
 
@@ -8,20 +9,73 @@
 
 | 動作 | 操作 |
 |------|------|
-| 選取己方建築 | 點擊或按住藍色節點 |
-| 發兵 | 拖曳到目標節點後放開 |
-| 切換送兵比例 | 右鍵（桌面）或點擊底部 25% / 50% / 75% / 100% 按鈕 |
+| 選取己方節點 | 點擊藍色節點 |
+| 多點集火（多來源派兵） | 按住第一個節點後繼續點選其他己方節點 |
+| 派兵 | 從選取節點拖曳到目標節點後放開 |
+| 升級節點 | 雙擊己方節點（兵力足夠時） |
+| 施放法術 | 點擊底部法術按鈕，再點擊目標節點 |
 | 暫停 | 右上角 ⏸ 按鈕 |
+| 返回選關 | 頂部中央 ▼ 選關按鈕 |
 
-**目標**：佔領地圖上所有紅色（敵方）建築。
+**勝利條件**：佔領地圖上所有敵方（紫色）節點。
 
-## 🏗️ 建築類型
+---
 
-| 建築 | 產兵速度 | 最大兵力 | 防禦倍率 |
-|------|----------|----------|----------|
-| 村莊 V | 1 / 秒 | 50 | ×1.0 |
-| 城堡 C | 0.4 / 秒 | 100 | ×1.5 |
-| 箭塔 T | 0.25 / 秒 | 30 | ×2.0 |
+## 🏗️ 節點類型
+
+| 節點 | 特性 | 被動效果 |
+|------|------|----------|
+| 村莊 V | 產兵快、容量中等 | 無 |
+| 城堡 C | 產兵慢、容量大、防禦強 | 成功守城後自動回復少量兵力 |
+| 箭塔 T | 產兵最慢、容量小、防禦最強 | 攻擊方兵力在結算前扣減 25% |
+
+每種節點最多可升級兩次，提升容量與產兵速度。
+
+---
+
+## ✨ 法術系統
+
+底部法術列提供三種法術，消耗魔力（自動回復）：
+
+| 法術 | 效果 | 目標 |
+|------|------|------|
+| 急行 ⚡ | 加速己方節點產兵速度 | 己方節點 |
+| 隕石 ☄️ | 對敵方節點造成直接兵力傷害 | 敵方節點 |
+| 強化 🛡️ | 提升己方節點防禦倍率 | 己方節點 |
+
+法術有冷卻時間，底部圓形按鈕顯示可用狀態與倒數秒數。
+
+---
+
+## 🗺️ 戰役內容
+
+- **30 關**完整戰役，難度線性遞增
+- **6 章**，每章 5 關，各有主題：
+
+| 章節 | 主題 |
+|------|------|
+| 第一章 | 新手教學（派兵、擴張基礎） |
+| 第二章 | 節點差異（Tower 阻箭、Castle 防守） |
+| 第三章 | 雙線決策（分兵、中央爭奪） |
+| 第四章 | 升級策略（升級改變戰局） |
+| 第五章 | 法術運用（Meteor / Haste / Fortify 登場） |
+| 第六章 | 綜合挑戰（多路壓力、高等節點） |
+
+- 關卡依序解鎖，進度自動儲存（localStorage）
+- 特殊 ★ 記憶點關卡散布各章，設計有明確「頓悟時刻」
+
+---
+
+## 🖥️ 場景架構
+
+| 場景 | 說明 |
+|------|------|
+| 主選單 | 品牌頁，進入戰役 / 選關 / 商店 |
+| 選關畫面 | 可捲動 6 章格線，顯示解鎖進度與難度 |
+| 商店 | 道具瀏覽頁，顯示金幣與奧術石資源 |
+| 遊戲場景 | 核心 RTS 戰鬥，含頂部 HUD 與底部法術列 |
+| 暫停面板 | 繼續或返回選關 |
+| 結算面板 | 勝利 / 失敗，含通關時間與章節進度 |
 
 ---
 
@@ -31,7 +85,7 @@
 # 安裝依賴
 npm install
 
-# 啟動開發伺服器（預設 http://localhost:3000）
+# 啟動開發伺服器（http://localhost:3000）
 npm run dev
 
 # 生產打包
@@ -43,48 +97,9 @@ npm run preview
 
 ---
 
-## 📦 推上 GitHub
+## ☁️ 部署（Vercel）
 
-```bash
-# 1. 在 GitHub 建立新 repository（不要初始化 README）
-
-# 2. 本地初始化
-git init
-git add .
-git commit -m "feat: initial Node Wars MVP"
-
-# 3. 連接遠端（替換為你的 repo URL）
-git remote add origin https://github.com/YOUR_USERNAME/node-wars.git
-git branch -M main
-git push -u origin main
-```
-
----
-
-## ☁️ 部署到 Vercel
-
-### 方法一：GitHub 自動部署（推薦）
-
-1. 進入 [vercel.com](https://vercel.com) 並登入
-2. 點擊 **Add New → Project**
-3. 選擇你剛推上去的 GitHub repository
-4. 設定保持預設（Vercel 自動偵測 Vite）
-5. 點擊 **Deploy**
-
-之後每次 `git push` 都會自動觸發部署。
-
-### 方法二：Vercel CLI
-
-```bash
-# 安裝 Vercel CLI
-npm i -g vercel
-
-# 登入
-vercel login
-
-# 部署（首次會詢問設定）
-vercel --prod
-```
+連結 GitHub repository 至 [vercel.com](https://vercel.com) 後直接部署。`vercel.json` 已設定 SPA rewrite，無需額外設定。之後每次 `git push` 自動觸發重新部署。
 
 ---
 
@@ -92,31 +107,43 @@ vercel --prod
 
 ```
 src/
-├── main.js              # Phaser 入口，遊戲設定
-├── config.js            # 全域常數（數值、顏色、速度）
+├── main.js                   # Phaser 入口與遊戲初始化
+├── config.js                 # 全域常數（節點數值、法術、升級設定）
+├── config/
+│   ├── layout.js             # HUD 佈局常數
+│   └── ui-tokens.js          # UI 設計 token
 ├── data/
-│   └── levels.js        # 5 關卡設計資料
+│   └── levels.js             # 30 關卡資料與 6 章節定義
 ├── scenes/
-│   ├── BootScene.js     # 開機載入
-│   ├── MenuScene.js     # 主選單
-│   ├── LevelSelectScene.js  # 關卡選擇
-│   └── GameScene.js     # 核心戰鬥場景
+│   ├── BootScene.js          # 啟動載入
+│   ├── MenuScene.js          # 主選單
+│   ├── LevelSelectScene.js   # 選關畫面（可捲動格線）
+│   ├── ShopScene.js          # 軍備商店
+│   └── GameScene.js          # 核心戰鬥場景
 ├── entities/
-│   ├── NodeBuilding.js  # 建築節點（生產、繪製、命中判定）
-│   └── TroopGroup.js    # 移動部隊（移動、繪製）
+│   ├── NodeBuilding.js       # 節點建築（生產、繪製、Buff 視覺）
+│   └── TroopGroup.js         # 移動部隊
 ├── systems/
-│   ├── CombatSystem.js  # 戰鬥結算
-│   └── AISystem.js      # 敵方 AI 決策
-└── ui/                  # （預留擴充：法術面板、技能樹等）
+│   ├── AISystem.js           # 敵方 AI（6 種風格）
+│   ├── AudioManager.js       # 音效合成（Web Audio API，零外部音檔）
+│   ├── CombatSystem.js       # 戰鬥結算
+│   ├── InputController.js    # 玩家輸入（拖曳、多點集火）
+│   ├── MovementSystem.js     # 部隊移動與到達判定
+│   ├── ProductionSystem.js   # 節點自動生兵
+│   ├── SaveSystem.js         # 進度儲存（localStorage）
+│   ├── SpellSystem.js        # 法術系統（魔力、冷卻、施法）
+│   └── WinLoseSystem.js      # 勝負判定
+└── ui/
+    ├── UIController.js       # HUD 與法術列協調
+    ├── PausePanel.js         # 暫停面板
+    └── GameOverPanel.js      # 結算面板
 ```
 
 ---
 
-## 🔮 未來擴充方向
+## 🔮 開發方向
 
-- 法術系統（閃電、冰凍、增援）
-- Boss 關卡與特殊節點
-- 技能樹與升級系統
-- 多人連線（WebSocket）
-- 音效與 BGM
-- 關卡編輯器
+- 系統設定頁（音量控制）
+- 新手教學引導
+- 商店購買邏輯實裝
+- 更多遊戲模式（限時挑戰、防守模式）
