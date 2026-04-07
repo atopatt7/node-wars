@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <!--
+    橫向優先設定：
+      viewport-fit=cover   → 畫面延伸至瀏海 / Home indicator 區域
+      user-scalable=no     → 防止雙指縮放干擾遊戲
+  -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="screen-orientation" content="landscape" />
+  <title>Node Wars ｜ 節點征服</title>
+  <style>
+    /* ── CSS 變數：讓 JS 可讀取 safe-area-inset env() 值 ── */
+    :root {
+      --sat: env(safe-area-inset-top,    0px);
+      --sar: env(safe-area-inset-right,  0px);
+      --sab: env(safe-area-inset-bottom, 0px);
+      --sal: env(safe-area-inset-left,   0px);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #080D28;
+    }
+
+    /*
+      #game：不加 safe-area padding，讓 canvas 盡量填滿整個視窗。
+      Scale.FIT 模式下 Phaser 會自動置中 canvas，
+      其產生的 letterbox 空間天然隔開了瀏海 / 動態島區域（見說明）。
+      Phaser 層的 SAFE_H=16 提供 UI 元素額外內縮，確保不被遮擋。
+    */
+    #game {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      height: 100%;
+    }
+
+    canvas {
+      display: block;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      user-select: none;
+    }
+
+    /* ══════════════════════════════════════════════════════
+       直向旋轉提示（portrait 時顯示，landscape 時 CSS 隱藏）
+       ══════════════════════════════════════════════════════ */
+    #orientation-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #080D28;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 18px;
+      padding:
+        env(safe-area-inset-top,    20px)
+        env(safe-area-inset-right,  20px)
+        env(safe-area-inset-bottom, 20px)
+        env(safe-area-inset-left,   20px);
+    }
+    @media (orientation: portrait) {
+      #orientation-overlay { display: flex; }
+    }
+    .ov-icon {
+      font-size: 52px;
+      animation: ov-spin 2.4s ease-in-out infinite;
+    }
+    @keyframes ov-spin {
+      0%,100% { transform: rotate(0deg);  opacity: 1;   }
+      45%,55%  { transform: rotate(90deg); opacity: 0.7; }
+    }
+    .ov-title {
+      color: #7ABBFF;
+      font-family: 'Arial Black', Arial, sans-serif;
+      font-size: 20px;
+      text-align: center;
+      line-height: 1.5;
+    }
+    .ov-sub {
+      color: #334466;
+      font-family: Arial, sans-serif;
+      font-size: 13px;
+      text-align: center;
+    }
+    .ov-game-title {
+      color: #FFFFFF;
+      font-family: 'Arial Black', Impact, sans-serif;
+      font-size: 15px;
+      letter-spacing: .1em;
+      opacity: .45;
+      margin-top: 8px;
+    }
+
+    /* ══════════════════════════════════════════════════════
+       iOS Safari「加入主畫面」提示橫幅
+       - 僅在 Safari on iOS、非 standalone 模式時由 JS 顯示
+       - 預設 display:none，由 JS 判斷後改為 flex
+       ══════════════════════════════════════════════════════ */
+    #a2hs-banner {
+      display: none;            /* JS 控制顯示 */
+      position: fixed;
+      bottom: env(safe-area-inset-bottom, 0px);
+      left: 0;
+      right: 0;
+      z-index: 8888;
+      background: rgba(8, 13, 40, 0.96);
+      border-top: 1px solid #1A3A6A;
+      padding: 10px 16px 10px 16px;
+      align-items: center;
+      gap: 12px;
+      /* 僅在 landscape 時顯示（portrait 時有旋轉提示蓋住） */
+    }
+    @media (orientation: portrait) {
+      #a2hs-banner { display: none !important; }
+    }
+    .a2hs-text {
+      flex: 1;
+      color: #AACCEE;
+      font-family: Arial, sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .a2hs-text strong {
+      color: #7ABBFF;
+    }
+    .a2hs-icon {
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    #a2hs-close {
+      background: none;
+      border: 1px solid #2A4A6A;
+      border-radius: 6px;
+      color: #5577AA;
+      font-size: 13px;
+      padding: 4px 10px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    #a2hs-close:active { background: #1A2A40; }
+  </style>
+  <script type="module" crossorigin src="./assets/index-CvZJdqVw.js"></script>
+</head>
+<body>
+
+  <!-- ── 直向提示（portrait CSS 自動顯示） ── -->
+  <div id="orientation-overlay" role="alert" aria-live="polite">
+    <div class="ov-icon">📱</div>
+    <div class="ov-title">請將裝置橫向旋轉<br>以進行遊戲</div>
+    <div class="ov-sub">Node Wars 為橫向遊戲<br>旋轉後即自動繼續</div>
+    <div class="ov-game-title">NODE WARS · 節點征服</div>
+  </div>
+
+  <!-- ── iOS Safari「加入主畫面」提示（JS 控制顯示） ── -->
+  <div id="a2hs-banner" role="status">
+    <div class="a2hs-icon">⬆️</div>
+    <div class="a2hs-text">
+      加入主畫面可獲得<strong>全螢幕</strong>體驗<br>
+      點擊 Safari 分享按鈕 → 加入主畫面
+    </div>
+    <button id="a2hs-close" aria-label="關閉提示">✕ 關閉</button>
+  </div>
+
+  <!-- ── Phaser 遊戲容器 ── -->
+  <div id="game"></div>
+
+
+  <!--
+    iOS Safari「加入主畫面」偵測邏輯
+    判斷條件：
+      1. iOS 裝置（iPhone/iPad/iPod）
+      2. Safari 瀏覽器（非 Chrome / Firefox for iOS）
+      3. 尚未以 standalone 模式執行（尚未加入主畫面）
+    符合條件時延遲 3 秒顯示橫幅，避免干擾遊戲啟動。
+    使用者點「關閉」後寫入 sessionStorage，本次訪問不再顯示。
+  -->
+  <script>
+    (function () {
+      // 偵測條件
+      var ua         = navigator.userAgent;
+      var isIOS      = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+      var isSafari   = /Safari/.test(ua) && !/CriOS|FxiOS|OPiOS|EdgiOS/.test(ua);
+      var standalone = window.navigator.standalone === true;
+      var dismissed  = sessionStorage.getItem('a2hs_dismissed');
+
+      if (!isIOS || !isSafari || standalone || dismissed) return;
+
+      var banner = document.getElementById('a2hs-banner');
+      var closeBtn = document.getElementById('a2hs-close');
+
+      // 延遲 3 秒顯示（避免啟動時干擾）
+      setTimeout(function () {
+        banner.style.display = 'flex';
+      }, 3000);
+
+      closeBtn.addEventListener('click', function () {
+        banner.style.display = 'none';
+        sessionStorage.setItem('a2hs_dismissed', '1');
+      });
+    })();
+  </script>
+</body>
+</html>

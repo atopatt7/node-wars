@@ -29,9 +29,11 @@
  *   SaveSystem.isCompleted(3);       // => true
  */
 
-const SAVE_KEY   = 'nodeWars_v1_completed';
-const UNLOCK_KEY = 'nodeWars_v1_maxUnlocked';
-const FAIL_KEY   = 'nodeWars_v1_failCounts';   // 防卡關：各關失敗次數
+const SAVE_KEY     = 'nodeWars_v1_completed';
+const UNLOCK_KEY   = 'nodeWars_v1_maxUnlocked';
+const FAIL_KEY     = 'nodeWars_v1_failCounts';   // 防卡關：各關失敗次數
+const CURRENCY_KEY = 'nodeWars_v1_currency';     // { gold, arcane }
+const OWNED_KEY    = 'nodeWars_v1_ownedItems';   // { [itemId]: count }
 
 export const SaveSystem = {
   // ── 完成記錄 ──────────────────────────────────────
@@ -166,6 +168,95 @@ export const SaveSystem = {
     }
   },
 
+  // ── 貨幣系統 ──────────────────────────────────────
+
+  /**
+   * 取得目前貨幣餘額。新存檔預設：gold=1250, arcane=8。
+   * @returns {{ gold: number, arcane: number }}
+   */
+  getCurrency() {
+    try {
+      const raw = localStorage.getItem(CURRENCY_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === 'object' && parsed !== null) {
+          return {
+            gold:   typeof parsed.gold   === 'number' ? parsed.gold   : 1250,
+            arcane: typeof parsed.arcane === 'number' ? parsed.arcane : 8,
+          };
+        }
+      }
+    } catch {}
+    return { gold: 1250, arcane: 8 };
+  },
+
+  /**
+   * 直接設定貨幣餘額。
+   * @param {number} gold
+   * @param {number} arcane
+   */
+  setCurrency(gold, arcane) {
+    try {
+      localStorage.setItem(CURRENCY_KEY, JSON.stringify({ gold, arcane }));
+    } catch {}
+  },
+
+  /**
+   * 扣除貨幣。若餘額不足回傳 false，成功扣除回傳 true。
+   * @param {'gold'|'arcane'} type
+   * @param {number} amount
+   * @returns {boolean}
+   */
+  spendCurrency(type, amount) {
+    const curr = this.getCurrency();
+    if (type === 'arcane') {
+      if (curr.arcane < amount) return false;
+      this.setCurrency(curr.gold, curr.arcane - amount);
+    } else {
+      if (curr.gold < amount) return false;
+      this.setCurrency(curr.gold - amount, curr.arcane);
+    }
+    return true;
+  },
+
+  // ── 持有道具 ──────────────────────────────────────
+
+  /**
+   * 取得持有道具 map（{ [itemId]: count }）。
+   * @returns {Record<string, number>}
+   */
+  getOwnedItems() {
+    try {
+      const raw = localStorage.getItem(OWNED_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return (typeof parsed === 'object' && parsed !== null) ? parsed : {};
+      }
+    } catch {}
+    return {};
+  },
+
+  /**
+   * 增加指定道具的持有數量（+1）。
+   * @param {string} id
+   */
+  addOwnedItem(id) {
+    try {
+      const data = this.getOwnedItems();
+      data[id] = (data[id] ?? 0) + 1;
+      localStorage.setItem(OWNED_KEY, JSON.stringify(data));
+    } catch {}
+  },
+
+  /**
+   * 取得所有持有道具的總數量。
+   * @returns {number}
+   */
+  getTotalOwnedCount() {
+    const data = this.getOwnedItems();
+    return Object.values(data).reduce((sum, v) => sum + v, 0);
+  },
+
   // ── 清除 ──────────────────────────────────────────
 
   /**
@@ -176,6 +267,8 @@ export const SaveSystem = {
       localStorage.removeItem(SAVE_KEY);
       localStorage.removeItem(UNLOCK_KEY);
       localStorage.removeItem(FAIL_KEY);
+      localStorage.removeItem(CURRENCY_KEY);
+      localStorage.removeItem(OWNED_KEY);
     } catch {
       // 靜默忽略
     }

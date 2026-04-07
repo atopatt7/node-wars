@@ -11,15 +11,18 @@
  *   CARD_W=384, CARD_H=164, COL_GAP=16, ROW_GAP=16
  *   GRID_LEFT=(1280-1184)/2=48
  *
- * 卡片三種狀態：
+ * 卡片四種狀態（動態計算）：
  *   'buyable'     — 可購買，金色邊框，底部購買按鈕
- *   'insufficient'— 金幣不足，暗邊框，按鈕顯示「金幣不足」
+ *   'insufficient'— 資源不足，暗邊框，按鈕顯示「金幣不足」
  *   'locked'      — 未開放，極暗配色，鎖頭圖示+解鎖條件
+ *   'owned'       — 已持有，金色邊框，✓ 已持有標示
  *
  * 捲動架構同 LevelSelectScene（Container + GeometryMask + wheel）
  */
 
-import { audioManager } from '../systems/AudioManager.js';
+import { audioManager }            from '../systems/AudioManager.js';
+import { SaveSystem }              from '../systems/SaveSystem.js';
+import { ShopSystem, SHOP_ITEMS }  from '../systems/ShopSystem.js';
 
 // ── 佈局常數 ────────────────────────────────────────────────────
 const TITLE_H  = 72;
@@ -34,92 +37,6 @@ const ROW_GAP   = 16;
 
 const GRID_PAD_TOP = 16;
 const GRID_PAD_BOT = 24;
-
-// ── 商店道具資料（對應 Figma 三種狀態）─────────────────────────
-const SHOP_ITEMS = [
-  {
-    category:      '防禦',
-    name:          '鐵衛壁壘',
-    badge:         '⛨',
-    desc:          '強化我方所有防禦節點，使其在承受攻擊時維持更長時間',
-    effectLabel:   '持續 1 場戰役  ·  單次使用',
-    price:         400,
-    priceType:     'gold',
-    state:         'buyable',
-  },
-  {
-    category:      '增益',
-    name:          '龍息火油',
-    badge:         '🔥',
-    desc:          '在目標節點塗抹火油，使敵方部隊行軍速度大幅降低',
-    effectLabel:   '持續 1 場戰役  ·  單次使用',
-    price:         600,
-    priceType:     'gold',
-    state:         'buyable',
-  },
-  {
-    category:      '奧術',
-    name:          '虛空封印',
-    badge:         '◈',
-    desc:          '封印一條敵方增援路徑，持續至該關卡結束',
-    effectLabel:   '持續 1 場戰役  ·  單次使用',
-    price:         3,
-    priceType:     'arcane',
-    state:         'buyable',
-  },
-  {
-    category:      '防禦',
-    name:          '聖盾護符',
-    badge:         '🛡',
-    desc:          '賦予指定英雄神聖護盾，使其免疫一次致命一擊',
-    effectLabel:   '持續 1 場戰役  ·  單次使用',
-    price:         1200,
-    priceType:     'gold',
-    state:         'insufficient',
-  },
-  {
-    category:      '增益',
-    name:          '疾風馬蹄',
-    badge:         '⚡',
-    desc:          '提升我方所有騎兵單位行軍速度，快速佔領戰略要道',
-    effectLabel:   '持續 1 場戰役  ·  單次使用',
-    price:         800,
-    priceType:     'gold',
-    state:         'insufficient',
-  },
-  {
-    category:      '奧術',
-    name:          '血和奠徒',
-    badge:         '◈',
-    desc:          '召喚一名血和奠徒，封印指定節點的虛空純化通道',
-    effectLabel:   '持續 1 場戰役  ·  單次使用',
-    price:         5,
-    priceType:     'arcane',
-    state:         'insufficient',
-  },
-  {
-    category:      '傳奇',
-    name:          '黑鐵戰旗',
-    badge:         '⚑',
-    desc:          '植入戰場的傳奇戰旗，使周圍友軍士氣大幅提升',
-    effectLabel:   '持續 1 場戰役  ·  單次使用',
-    price:         0,
-    priceType:     'gold',
-    state:         'locked',
-    unlockCondition: '完成第三章以解鎖',
-  },
-  {
-    category:      '奧術',
-    name:          '虛空天象儲',
-    badge:         '◈',
-    desc:          '儲存虛空能量，待戰場局勢危急時釋放特殊變異力量',
-    effectLabel:   '持續 1 場戰役  ·  單次使用',
-    price:         0,
-    priceType:     'arcane',
-    state:         'locked',
-    unlockCondition: '完成第四章以解鎖',
-  },
-];
 
 export class ShopScene extends Phaser.Scene {
   constructor() {
@@ -250,7 +167,11 @@ export class ShopScene extends Phaser.Scene {
       color:      '#b8922a',
     }).setOrigin(0.5, 0).setAlpha(0.40).setDepth(10);
 
-    // 資源顯示（右上角）
+    // ── 資源顯示（右上角，讀取真實存檔）───────────────────────
+    const { gold, arcane } = SaveSystem.getCurrency();
+    const goldStr   = gold.toLocaleString();
+    const arcaneStr = String(arcane);
+
     const resGfx = this.add.graphics();
     resGfx.fillStyle(0x0f0b06, 1);
     resGfx.fillRoundedRect(W - 20 - 306, 14, 306, 44, 3);
@@ -258,11 +179,11 @@ export class ShopScene extends Phaser.Scene {
     resGfx.strokeRoundedRect(W - 20 - 306, 14, 306, 44, 3);
     resGfx.setDepth(10);
 
-    this.add.text(W - 20 - 306 + 12, 20, '⚜  金幣    1,250', {
+    this.add.text(W - 20 - 306 + 12, 20, `⚜  金幣    ${goldStr}`, {
       fontSize: '13px', color: '#c9a84c',
     }).setAlpha(0.85).setDepth(10);
 
-    this.add.text(W - 20 - 306 + 12, 38, '◈  奧術石     8', {
+    this.add.text(W - 20 - 306 + 12, 38, `◈  奧術石     ${arcaneStr}`, {
       fontSize: '13px', color: '#8b5aae',
     }).setAlpha(0.75).setDepth(10);
 
@@ -321,8 +242,10 @@ export class ShopScene extends Phaser.Scene {
         fontSize: '11px', color: '#8a6a22',
       }).setOrigin(0, 0.5).setAlpha(0.45).setDepth(10);
 
+    // 持有道具數量（讀取真實存檔）
+    const ownedCount = SaveSystem.getTotalOwnedCount();
     this.add.text(W - 20, H - HINT_H / 2,
-      `持有道具  0 / 8 格`, {
+      `持有道具  ${ownedCount} / 8 格`, {
         fontSize: '11px', color: '#8a6a22',
       }).setOrigin(1, 0.5).setAlpha(0.40).setDepth(10);
   }
@@ -359,12 +282,18 @@ export class ShopScene extends Phaser.Scene {
    * @param {number} cy          容器本地 Y 中心
    * @param {number} cw          卡片寬 (384)
    * @param {number} ch          卡片高 (164)
-   * @param {object} item        道具資料
+   * @param {object} item        道具資料（來自 ShopSystem.SHOP_ITEMS）
    * @param {number} staggerIdx  進場動畫延遲序號
    */
   _addItemCard(cx, cy, cw, ch, item, staggerIdx = 0) {
     const halfW = cw / 2;  // 192
     const halfH = ch / 2;  // 82
+
+    // 即時計算狀態
+    const itemState      = ShopSystem.getItemState(item);
+    const isLocked       = itemState === 'locked';
+    const isInsufficient = itemState === 'insufficient';
+    const isOwned        = itemState === 'owned';
 
     // sub-container 置於主容器的 (cx, cy)，卡片內部用本地座標
     const sub = this.add.container(cx, cy);
@@ -372,9 +301,6 @@ export class ShopScene extends Phaser.Scene {
     // 本地座標（以 sub 中心為原點）
     const L = -halfW;  // -192
     const T = -halfH;  // -82
-
-    const isLocked       = item.state === 'locked';
-    const isInsufficient = item.state === 'insufficient';
 
     const g = this.add.graphics();
 
@@ -386,6 +312,11 @@ export class ShopScene extends Phaser.Scene {
         fill        = 0x090704;
         borderColor = 0x3d3530;
         borderAlpha = 0.35;
+      } else if (isOwned) {
+        // 已持有：金色邊框（同 buyable），稍帶翠色底）
+        fill        = 0x141a10;
+        borderColor = 0xb8922a;
+        borderAlpha = 0.55;
       } else if (isInsufficient) {
         fill        = 0x0f0b06;
         borderColor = 0x8a6a22;
@@ -438,6 +369,7 @@ export class ShopScene extends Phaser.Scene {
     // ── 文字內容 ──────────────────────────────────────────────
     const children = [g];
 
+    // ── 鎖定狀態 ─────────────────────────────────────────────
     if (isLocked) {
       children.push(
         this.add.text(L + 14, T + 10, item.category, {
@@ -481,7 +413,6 @@ export class ShopScene extends Phaser.Scene {
       sub.add(children);
       this._container.add(sub);
 
-      // 進場 stagger：alpha 0→1, scale 0.98→1, 180ms
       sub.setAlpha(0).setScale(0.98);
       this.tweens.add({
         targets: sub, alpha: 1, scaleX: 1, scaleY: 1,
@@ -490,7 +421,82 @@ export class ShopScene extends Phaser.Scene {
       return;
     }
 
-    // ── 可購買 / 金幣不足 ─────────────────────────────────
+    // ── 已持有狀態 ────────────────────────────────────────────
+    if (isOwned) {
+      children.push(
+        this.add.text(L + 14, T + 10, item.category, {
+          fontSize: '10px', color: '#b8922a',
+        }).setAlpha(0.55),
+
+        this.add.text(L + 14, T + 24, item.name, {
+          fontSize: '18px', fontFamily: 'Arial, sans-serif',
+          fontStyle: 'bold', color: '#e8d9b8',
+        }).setAlpha(0.80),
+
+        this.add.text(L + cw - 28, T + 14, item.badge || '◈', {
+          fontSize: '22px', color: '#b8922a',
+        }).setOrigin(0.5).setAlpha(0.25),
+
+        this.add.text(L + 14, T + 62, item.desc, {
+          fontSize: '12px', color: '#a89070',
+          wordWrap: { width: cw - 28 },
+        }).setAlpha(0.55),
+
+        this.add.text(L + 14, T + 96, item.effectLabel || '', {
+          fontSize: '10px', color: '#8a6a22',
+        }).setAlpha(0.35)
+      );
+
+      const priceSymbol = item.priceType === 'arcane' ? '◈' : '⚜';
+      children.push(
+        this.add.text(L + 14, T + 133, `${priceSymbol} ${item.price}`, {
+          fontSize: '15px', fontFamily: 'Arial, sans-serif',
+          fontStyle: 'bold', color: '#5a7a58',
+        }).setAlpha(0.55)
+      );
+
+      // 已持有按鈕（不可互動）
+      const ownedBtnGfx = this.add.graphics();
+      ownedBtnGfx.fillStyle(0x0d1a0c, 1);
+      ownedBtnGfx.fillRoundedRect(L + 248, T + 125, 120, 30, 2);
+      ownedBtnGfx.lineStyle(1, 0x3a6a38, 0.45);
+      ownedBtnGfx.strokeRoundedRect(L + 248, T + 125, 120, 30, 2);
+
+      const ownedBtnTxt = this.add.text(L + 248 + 60, T + 125 + 15, '✓ 已持有', {
+        fontSize: '13px', fontFamily: 'Arial Black, sans-serif', color: '#4cae6a',
+      }).setOrigin(0.5).setAlpha(0.85);
+
+      children.push(ownedBtnGfx, ownedBtnTxt);
+
+      // 卡片 hover 效果（hover scale，但無購買互動）
+      g.setInteractive(
+        new Phaser.Geom.Rectangle(L, T, cw, ch),
+        Phaser.Geom.Rectangle.Contains
+      );
+      g.on('pointerover', () => {
+        drawCard(true);
+        audioManager.play('ui_hover');
+        this.tweens.killTweensOf(sub);
+        this.tweens.add({ targets: sub, scaleX: 1.015, scaleY: 1.015, duration: 150, ease: 'Quad.easeOut' });
+      });
+      g.on('pointerout', () => {
+        drawCard(false);
+        this.tweens.killTweensOf(sub);
+        this.tweens.add({ targets: sub, scaleX: 1, scaleY: 1, duration: 150, ease: 'Quad.easeOut' });
+      });
+
+      sub.add(children);
+      this._container.add(sub);
+
+      sub.setAlpha(0).setScale(0.98);
+      this.tweens.add({
+        targets: sub, alpha: 1, scaleX: 1, scaleY: 1,
+        duration: 180, delay: staggerIdx * 30, ease: 'Quad.easeOut',
+      });
+      return;
+    }
+
+    // ── 可購買 / 資源不足 ─────────────────────────────────────
     children.push(
       this.add.text(L + 14, T + 10, item.category, {
         fontSize: '10px', color: '#b8922a',
@@ -563,7 +569,6 @@ export class ShopScene extends Phaser.Scene {
       btnGfx.on('pointerover', () => { drawBuyBtn(true); });
       btnGfx.on('pointerout',  () => { drawBuyBtn(false); btnTxt.setY(BTN_BASE_Y); });
       btnGfx.on('pointerdown', () => {
-        // pressed：顏色 -10%（drawBuyBtn 處理）+ y+2 + 120ms tween
         drawBuyBtn(false, true);
         this.tweens.add({ targets: btnTxt, y: BTN_BASE_Y + 2, duration: 120, ease: 'Quad.easeOut' });
       });
@@ -571,7 +576,16 @@ export class ShopScene extends Phaser.Scene {
         drawBuyBtn(false);
         this.tweens.add({ targets: btnTxt, y: BTN_BASE_Y, duration: 120, ease: 'Quad.easeOut' });
         audioManager.play('ui_click');
-        /* 購買邏輯預留 */
+
+        // ── 購買流程 ─────────────────────────────────────────
+        const success = ShopSystem.purchase(item);
+        if (success) {
+          // 重載場景以刷新所有卡片狀態與頁首資源顯示
+          this.cameras.main.fadeOut(200, 0, 0, 0);
+          this.cameras.main.once('camerafadeoutcomplete', () => {
+            this.scene.restart();
+          });
+        }
       });
     }
 
