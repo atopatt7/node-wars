@@ -140,6 +140,7 @@ export class GameScene extends Phaser.Scene {
     this.uiController.setupSpells((spellId) => this._onSpellButtonClick(spellId));
 
     // 道具欄（若本局攜帶道具則顯示於底部 HUD 右側）
+    this.itemSystem.setNodesRef(this.nodes);   // 注入節點清單（iron_banner 使用）
     this._createItemBar();
 
     // 右鍵取消待施放法術 / 道具
@@ -213,6 +214,10 @@ export class GameScene extends Phaser.Scene {
         // 防守成功（無被動）：藍白護盾彈開，600ms
         fb.node.triggerEffect('defended', 600);
         audioManager.play('defend');
+      } else if (fb.event === 'item_shield_pop') {
+        // 聖盾護符觸發：節點發亮閃光 + 音效
+        fb.node.triggerEffect('defended', 800);
+        audioManager.play('fortify');
       } else {
         // 被動效果事件（attacker_penalty / garrison_regen）
         fb.node.triggerEffect(fb.event);
@@ -608,7 +613,12 @@ export class GameScene extends Phaser.Scene {
     if (count < 1) return;
 
     fromNode.currentUnits -= count;
-    this.troops.push(new TroopGroup(fromNode, toNode, fromNode.owner, count));
+    const troop = new TroopGroup(fromNode, toNode, fromNode.owner, count);
+    // 疾風馬蹄：_speedBoostExpiry 有效時，出兵速度 ×1.6
+    if (Date.now() < (fromNode._speedBoostExpiry ?? 0)) {
+      troop.speed = troop.speed * 1.6;
+    }
+    this.troops.push(troop);
 
     // 出兵瞬間脈衝：玩家出兵時啟用增強版（更亮、更大、更有體感）
     fromNode.triggerSendPulse(fromNode.owner === 'player');
@@ -915,6 +925,54 @@ export class GameScene extends Phaser.Scene {
       initScale = 1.6;
       vy        = -70;
       maxLife   = 1300;
+
+    } else if (fb.event === 'item_shield') {
+      // 聖盾護符：白色神聖盾牌
+      text      = `🛡 聖盾${fb.value}s`;
+      color     = '#EEEEFF';
+      initScale = 1.6;
+      vy        = -70;
+      maxLife   = 1300;
+
+    } else if (fb.event === 'item_shield_pop') {
+      // 聖盾護符被觸發消耗：金色閃現
+      text      = '✦ 聖盾擋住！';
+      color     = '#FFFFAA';
+      initScale = 2.0;
+      vy        = -80;
+      maxLife   = 1600;
+
+    } else if (fb.event === 'item_speed') {
+      // 疾風馬蹄：綠色閃電
+      text      = `⚡ 加速${fb.value}s`;
+      color     = '#88FF66';
+      initScale = 1.6;
+      vy        = -70;
+      maxLife   = 1300;
+
+    } else if (fb.event === 'item_defdown') {
+      // 血和奠徒：紅色防禦削弱
+      text      = `⚔ 破防${fb.value}s`;
+      color     = '#FF5544';
+      initScale = 1.6;
+      vy        = -70;
+      maxLife   = 1300;
+
+    } else if (fb.event === 'item_banner') {
+      // 黑鐵戰旗：金色士氣旗幟
+      text      = `⚑ 士氣${fb.value}s`;
+      color     = '#FFDD22';
+      initScale = 1.6;
+      vy        = -70;
+      maxLife   = 1300;
+
+    } else if (fb.event === 'item_void_hit') {
+      // 虛空天象儲：即時傷害
+      text      = `◈ -${fb.value}`;
+      color     = '#CC88FF';
+      initScale = 1.8;
+      vy        = -80;
+      maxLife   = 1400;
 
     } else {
       return;
@@ -1327,9 +1385,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     // ── 成功使用 ──
-    if (result.event === 'item_fortify')  audioManager.play('fortify');
-    else if (result.event === 'item_slow')  audioManager.play('haste');    // 借用正面音效
-    else if (result.event === 'item_block') audioManager.play('meteor');   // 借用負面音效
+    if      (result.event === 'item_fortify') audioManager.play('fortify');
+    else if (result.event === 'item_slow')    audioManager.play('haste');
+    else if (result.event === 'item_block')   audioManager.play('meteor');
+    else if (result.event === 'item_shield')  audioManager.play('fortify');
+    else if (result.event === 'item_speed')   audioManager.play('haste');
+    else if (result.event === 'item_defdown') audioManager.play('meteor');
+    else if (result.event === 'item_banner')  audioManager.play('fortify');
+    else if (result.event === 'item_void_hit') audioManager.play('meteor');
 
     this._spawnFloatingText({
       event: result.event,

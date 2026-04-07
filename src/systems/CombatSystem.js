@@ -80,13 +80,28 @@ export class CombatSystem {
 
     // Step 2：計算攻防力
     // Fortify buff：若 _fortifyExpiry 未到期，防禦倍率額外加 SPELL_CONFIG.FORTIFY.defBonus（現為 0.8）
-    const fortifyActive = Date.now() < (target._fortifyExpiry ?? 0);
-    const effectiveDef  = target.defenseMultiplier + (fortifyActive ? SPELL_CONFIG.FORTIFY.defBonus : 0);
+    // 血和奠徒 debuff：若 _defenseDownExpiry 未到期，防禦倍率減 0.4（至少 0.5）
+    const now           = Date.now();
+    const fortifyActive = now < (target._fortifyExpiry    ?? 0);
+    const defDownActive = now < (target._defenseDownExpiry ?? 0);
+    const effectiveDef  = Math.max(0.5,
+      target.defenseMultiplier
+      + (fortifyActive ? SPELL_CONFIG.FORTIFY.defBonus : 0)
+      - (defDownActive ? 0.4 : 0)
+    );
     const attackPower   = effectiveAttack;
     const defendPower   = target.currentUnits * effectiveDef;
 
     if (attackPower > defendPower) {
       // Step 3a：攻擊方獲勝，佔領節點
+      // 聖盾護符：若 _shieldExpiry 尚未到期（且尚未觸發），保留 1 兵、消耗護盾
+      if (target.owner === 'player' && now < (target._shieldExpiry ?? 0)) {
+        target.currentUnits  = 1;
+        target._shieldExpiry = 0;   // 護盾消耗（單次觸發）
+        return { event: 'item_shield_pop', node: target,
+                 x: target.x, y: target.y, value: 0 };
+      }
+
       const remaining = Math.max(1, Math.floor(attackPower - defendPower));
       target.owner        = troop.owner;
       target.currentUnits = remaining;

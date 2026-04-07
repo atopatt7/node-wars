@@ -87,10 +87,13 @@ export class ProductionSystem {
 
     // Haste buff：若 _hasteExpiry 未到期，生兵速率乘以 2.5
     // 龍息火油 slow：若 _slowExpiry 未到期，生兵速率乘以 0.4
-    const hasteActive   = now < (node._hasteExpiry ?? 0);
-    const slowActive    = now < (node._slowExpiry  ?? 0);
+    // 黑鐵戰旗 banner：若 _bannerExpiry 未到期，生兵速率乘以 1.3
+    const hasteActive  = now < (node._hasteExpiry   ?? 0);
+    const slowActive   = now < (node._slowExpiry    ?? 0);
+    const bannerActive = now < (node._bannerExpiry  ?? 0);
     const effectiveRate = hasteActive ? node.productionRate * 2.5
                         : slowActive  ? node.productionRate * 0.4
+                        : bannerActive? node.productionRate * 1.3
                         : node.productionRate;
     const msPerUnit     = 1000 / effectiveRate;
     node.productionAccumulator += delta;

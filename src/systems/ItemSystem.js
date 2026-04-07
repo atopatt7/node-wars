@@ -68,6 +68,90 @@ const ITEM_DEFS = {
       return { success: true, event: 'item_block', node, value: 6 };
     },
   },
+
+  /**
+   * 聖盾護符：我方節點獲得一次致命格檔，10 秒有效期內
+   * CombatSystem 在 Step 3a（攻擊方勝利）前讀取 _shieldExpiry；
+   * 若護盾仍有效，保留 1 兵並清除護盾（單次觸發）。
+   */
+  holy_shield: {
+    targetType: 'own',
+    duration:   10_000,
+    apply(node) {
+      node._shieldExpiry = Date.now() + 10_000;
+      return { success: true, event: 'item_shield', node, value: 10 };
+    },
+  },
+
+  /**
+   * 疾風馬蹄：我方節點出兵移動速度 ×1.6，持續 8 秒
+   * GameScene._sendTroops 在建立 TroopGroup 後讀取 _speedBoostExpiry 調整 speed。
+   */
+  swift_hooves: {
+    targetType: 'own',
+    duration:   8_000,
+    apply(node) {
+      node._speedBoostExpiry = Date.now() + 8_000;
+      return { success: true, event: 'item_speed', node, value: 8 };
+    },
+  },
+
+  /**
+   * 血和奠徒：削弱敵方節點防禦倍率 -0.4，持續 8 秒
+   * CombatSystem.resolve() Step 2 讀取 _defenseDownExpiry 降低 effectiveDef。
+   */
+  blood_warden: {
+    targetType: 'enemy',
+    duration:   8_000,
+    apply(node) {
+      node._defenseDownExpiry = Date.now() + 8_000;
+      return { success: true, event: 'item_defdown', node, value: 8 };
+    },
+  },
+
+  /**
+   * 黑鐵戰旗：目標節點 + 最近一個友方節點生兵速率 ×1.3，持續 12 秒
+   * ProductionSystem 讀取 _bannerExpiry 調整 effectiveRate。
+   * 需要 _nodesRef（由 GameScene 在 create() 後設定）來找最近友方節點。
+   */
+  iron_banner: {
+    targetType: 'own',
+    duration:   12_000,
+    apply(node, nodesRef) {
+      const expiry = Date.now() + 12_000;
+      node._bannerExpiry = expiry;
+
+      // 找最近的另一個友方節點，一起加 buff
+      if (nodesRef && nodesRef.length > 1) {
+        let nearest = null;
+        let minDist = Infinity;
+        for (const n of nodesRef) {
+          if (n === node || n.owner !== 'player') continue;
+          const dx = n.x - node.x, dy = n.y - node.y;
+          const d  = dx * dx + dy * dy;
+          if (d < minDist) { minDist = d; nearest = n; }
+        }
+        if (nearest) nearest._bannerExpiry = expiry;
+      }
+
+      return { success: true, event: 'item_banner', node, value: 12 };
+    },
+  },
+
+  /**
+   * 虛空天象儲：立即對敵方節點造成 -15 兵傷害 + 封鎖生兵 3 秒
+   * 即時扣兵由此處執行；_productionBlockExpiry 複用 void_seal 的視覺。
+   */
+  void_reservoir: {
+    targetType: 'enemy',
+    duration:   3_000,
+    apply(node) {
+      const dmg = Math.min(15, Math.max(0, node.currentUnits - 1)); // 至少留 1 兵
+      node.currentUnits         = Math.max(1, node.currentUnits - dmg);
+      node._productionBlockExpiry = Date.now() + 3_000;
+      return { success: true, event: 'item_void_hit', node, value: dmg };
+    },
+  },
 };
 
 // ── ItemSystem ────────────────────────────────────────────────────
@@ -87,6 +171,21 @@ export class ItemSystem {
      * @type {string|null}
      */
     this._pendingItemId = null;
+
+    /**
+     * 節點清單參考（供 iron_banner 找最近友方節點）
+     * 由 GameScene 在 create() 後呼叫 setNodesRef() 設定。
+     * @type {import('../entities/NodeBuilding.js').NodeBuilding[]|null}
+     */
+    this._nodesRef = null;
+  }
+
+  /**
+   * 讓 GameScene 在 create() 後注入節點清單，供部分道具效果使用。
+   * @param {import('../entities/NodeBuilding.js').NodeBuilding[]} nodes
+   */
+  setNodesRef(nodes) {
+    this._nodesRef = nodes;
   }
 
   // ── 查詢 ──────────────────────────────────────────────
@@ -178,8 +277,8 @@ export class ItemSystem {
       return { success: false, reason: 'wrong_target' };
     }
 
-    // 套用效果
-    const result = def.apply(targetNode);
+    // 套用效果（iron_banner 需要 nodesRef 找最近友方節點）
+    const result = def.apply(targetNode, this._nodesRef);
 
     // 消耗：從本局清單移除 + 扣持有
     this._activeItems   = this._activeItems.filter(id => id !== itemId);

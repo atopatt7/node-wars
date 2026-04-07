@@ -1309,6 +1309,129 @@ export class NodeBuilding {
       g.fillStyle(0x6600AA, fadeAlpha * 0.10);
       g.fillCircle(x, y, r);
     }
+
+    // ── Holy Shield（聖盾護符）：白色神聖護盾光環 ──────
+    // 道具效果：10 秒內遭致命打擊時保留 1 兵（單次觸發）
+    // 視覺：純白主環 + 緩慢旋轉十字光點，「神聖/庇護」感
+    if (now < (this._shieldExpiry ?? 0)) {
+      const fadeAlpha = Math.min(1, (this._shieldExpiry - now) / 800);
+      const pulse     = this._isMobile ? 0.80 : 0.60 + 0.40 * Math.abs(Math.sin(now * 0.0016));
+      const rot       = (now * 0.0010) % (Math.PI * 2);
+
+      // 外層白色光暈
+      g.fillStyle(0xFFFFFF, fadeAlpha * pulse * 0.10);
+      g.fillCircle(x, y, r + 22);
+
+      // 主白色環
+      g.lineStyle(3, 0xFFFFFF, fadeAlpha * pulse * 0.88);
+      g.strokeCircle(x, y, r + 14);
+
+      // 內側細環（金白色）
+      g.lineStyle(1.5, 0xFFEECC, fadeAlpha * pulse * 0.50);
+      g.strokeCircle(x, y, r + 8);
+
+      // 4 個旋轉十字光點（聖光感）
+      for (let i = 0; i < 4; i++) {
+        const a = rot + (i / 4) * Math.PI * 2;
+        g.fillStyle(0xFFFFFF, fadeAlpha * pulse * 0.92);
+        g.fillCircle(x + Math.cos(a) * (r + 14), y + Math.sin(a) * (r + 14), 3.5);
+      }
+
+      // 節點內部白色潮染
+      g.fillStyle(0xFFFFFF, fadeAlpha * 0.06);
+      g.fillCircle(x, y, r);
+    }
+
+    // ── Swift Hooves（疾風馬蹄）：綠色加速弧光 ─────────
+    // 道具效果：8 秒內從該節點出發的部隊移動速度 ×1.6
+    // 視覺：鮮綠色旋轉雙弧（比 Haste 的藍色更細、更短）
+    if (now < (this._speedBoostExpiry ?? 0)) {
+      const boostDur  = 8_000;
+      const fadeAlpha = Math.min(1, (this._speedBoostExpiry - now) / 800);
+      const pulse     = this._isMobile ? 0.82 : 0.65 + 0.35 * Math.abs(Math.sin(now * 0.005));
+      const rotA      = (now * 0.008) % (Math.PI * 2);
+      const rotB      = rotA + Math.PI;
+
+      // 外層綠色暈
+      g.fillStyle(0x44FF66, fadeAlpha * pulse * 0.08);
+      g.fillCircle(x, y, r + 18);
+
+      // 兩段旋轉弧（各 120°，鮮綠）
+      [rotA, rotB].forEach(angle => {
+        g.lineStyle(2.5, 0x44FF66, fadeAlpha * pulse * 0.85);
+        g.beginPath();
+        g.arc(x, y, r + 12, angle, angle + Math.PI * 0.667, false);
+        g.strokePath();
+        // 弧末端亮點
+        const ex = x + Math.cos(angle + Math.PI * 0.667) * (r + 12);
+        const ey = y + Math.sin(angle + Math.PI * 0.667) * (r + 12);
+        g.fillStyle(0xAAFFBB, fadeAlpha * pulse * 0.90);
+        g.fillCircle(ex, ey, 2.5);
+      });
+    }
+
+    // ── Blood Warden（血和奠徒）：紅色破防裂紋環 ──────
+    // 道具效果：8 秒內敵方節點防禦 -0.4
+    // 視覺：暗紅鋸齒環 + 慢速旋轉血紅裂紋點
+    if (now < (this._defenseDownExpiry ?? 0)) {
+      const fadeAlpha = Math.min(1, (this._defenseDownExpiry - now) / 800);
+      const pulse     = this._isMobile ? 0.80 : 0.55 + 0.45 * Math.abs(Math.sin(now * 0.0013));
+      const rot       = (now * 0.0015) % (Math.PI * 2);
+
+      // 外層暗紅暈染
+      g.fillStyle(0xCC0000, fadeAlpha * pulse * 0.10);
+      g.fillCircle(x, y, r + 20);
+
+      // 主紅色環（粗）
+      g.lineStyle(3.5, 0xFF2222, fadeAlpha * pulse * 0.88);
+      g.strokeCircle(x, y, r + 13);
+
+      // 內側暗紅細環
+      g.lineStyle(1.5, 0xFF6644, fadeAlpha * pulse * 0.50);
+      g.strokeCircle(x, y, r + 7);
+
+      // 5 個旋轉血紅裂紋點
+      for (let i = 0; i < 5; i++) {
+        const a = rot + (i / 5) * Math.PI * 2;
+        g.fillStyle(0xFF4422, fadeAlpha * pulse * 0.88);
+        g.fillCircle(x + Math.cos(a) * (r + 13), y + Math.sin(a) * (r + 13), 3);
+      }
+
+      // 節點內部紅色潮染（「受到破防」感）
+      g.fillStyle(0xCC0000, fadeAlpha * 0.08);
+      g.fillCircle(x, y, r);
+    }
+
+    // ── Iron Banner（黑鐵戰旗）：金色鼓舞光暈 ─────────
+    // 道具效果：12 秒內目標節點與最近友方節點生兵 ×1.3
+    // 視覺：金黃色穩定光環 + 緩慢上升的旗幟三角點
+    if (now < (this._bannerExpiry ?? 0)) {
+      const fadeAlpha = Math.min(1, (this._bannerExpiry - now) / 1000);
+      const pulse     = this._isMobile ? 0.82 : 0.70 + 0.30 * Math.abs(Math.sin(now * 0.0012));
+      const rot       = (now * 0.0007) % (Math.PI * 2);
+
+      // 外層金黃光暈
+      g.fillStyle(0xFFCC00, fadeAlpha * pulse * 0.10);
+      g.fillCircle(x, y, r + 22);
+
+      // 主金色環（雙環強調「旗幟加持」）
+      g.lineStyle(3.5, 0xFFCC00, fadeAlpha * pulse * 0.88);
+      g.strokeCircle(x, y, r + 16);
+
+      g.lineStyle(1.5, 0xFFEE66, fadeAlpha * pulse * 0.45);
+      g.strokeCircle(x, y, r + 10);
+
+      // 4 個緩慢旋轉金色旗幟點（等間距）
+      for (let i = 0; i < 4; i++) {
+        const a = rot + (i / 4) * Math.PI * 2;
+        g.fillStyle(0xFFDD33, fadeAlpha * pulse * 0.90);
+        g.fillCircle(x + Math.cos(a) * (r + 16), y + Math.sin(a) * (r + 16), 4);
+      }
+
+      // 節點內部金色潮染（「士氣高漲」感）
+      g.fillStyle(0xFFAA00, fadeAlpha * 0.07);
+      g.fillCircle(x, y, r);
+    }
   }
 
   // ─────────────────────────────────────────────────────
