@@ -49,10 +49,10 @@ const ITEM_DEFS = {
    */
   dragon_oil: {
     targetType: 'enemy',
-    duration:   8_000,
+    duration:   10_000,
     apply(node) {
-      node._slowExpiry = Date.now() + 8_000;
-      return { success: true, event: 'item_slow', node, value: 8 };
+      node._slowExpiry = Date.now() + 10_000;
+      return { success: true, event: 'item_slow', node, value: 10 };
     },
   },
 
@@ -89,10 +89,10 @@ const ITEM_DEFS = {
    */
   swift_hooves: {
     targetType: 'own',
-    duration:   8_000,
+    duration:   10_000,
     apply(node) {
-      node._speedBoostExpiry = Date.now() + 8_000;
-      return { success: true, event: 'item_speed', node, value: 8 };
+      node._speedBoostExpiry = Date.now() + 10_000;
+      return { success: true, event: 'item_speed', node, value: 10 };
     },
   },
 
@@ -102,10 +102,10 @@ const ITEM_DEFS = {
    */
   blood_warden: {
     targetType: 'enemy',
-    duration:   8_000,
+    duration:   10_000,
     apply(node) {
-      node._defenseDownExpiry = Date.now() + 8_000;
-      return { success: true, event: 'item_defdown', node, value: 8 };
+      node._defenseDownExpiry = Date.now() + 10_000;
+      return { success: true, event: 'item_defdown', node, value: 10 };
     },
   },
 
@@ -144,11 +144,11 @@ const ITEM_DEFS = {
    */
   void_reservoir: {
     targetType: 'enemy',
-    duration:   3_000,
+    duration:   4_000,
     apply(node) {
       const dmg = Math.min(15, Math.max(0, node.currentUnits - 1)); // 至少留 1 兵
-      node.currentUnits         = Math.max(1, node.currentUnits - dmg);
-      node._productionBlockExpiry = Date.now() + 3_000;
+      node.currentUnits           = Math.max(1, node.currentUnits - dmg);
+      node._productionBlockExpiry = Date.now() + 4_000;             // 3s→4s 微幅加強
       return { success: true, event: 'item_void_hit', node, value: dmg };
     },
   },

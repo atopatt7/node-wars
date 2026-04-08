@@ -38,8 +38,8 @@ export const SHOP_ITEMS = [
     category:       '增益',
     name:           '龍息火油',
     badge:          '🔥',
-    desc:           '在目標節點塗抹火油，使敵方部隊行軍速度大幅降低',
-    effectLabel:    '持續 1 場戰役  ·  單次使用',
+    desc:           '在目標節點塗抹火油，使敵方生兵速率降至 40%，持續 10 秒',
+    effectLabel:    '持續 10 秒  ·  單次使用',
     price:          600,
     priceType:      'gold',
     unlockRule:     null,
@@ -64,7 +64,7 @@ export const SHOP_ITEMS = [
     badge:          '🛡',
     desc:           '賦予我方節點神聖護盾，10 秒內免疫一次致命佔領，保留 1 兵',
     effectLabel:    '10 秒護盾  ·  單次觸發  ·  單次使用',
-    price:          1400,
+    price:          1000,       // 1400→1000：降低入手門檻，本質上只防一次
     priceType:      'gold',
     unlockRule:     null,
     maxOwned:       1,
@@ -74,9 +74,9 @@ export const SHOP_ITEMS = [
     category:       '增益',
     name:           '疾風馬蹄',
     badge:          '⚡',
-    desc:           '8 秒內從指定節點出發的我方部隊移動速度 ×1.6',
-    effectLabel:    '持續 8 秒  ·  單次使用',
-    price:          900,
+    desc:           '10 秒內從指定節點出發的我方部隊移動速度 ×1.6',
+    effectLabel:    '持續 10 秒  ·  單次使用',
+    price:          750,        // 900→750：搭配時長延長，維持 CP 值
     priceType:      'gold',
     unlockRule:     null,
     maxOwned:       1,
@@ -86,9 +86,9 @@ export const SHOP_ITEMS = [
     category:       '奧術',
     name:           '血和奠徒',
     badge:          '⚔',
-    desc:           '8 秒內削弱指定敵方節點防禦力 -0.4，使其更易被攻下',
-    effectLabel:    '持續 8 秒  ·  單次使用',
-    price:          10,
+    desc:           '10 秒內削弱指定敵方節點防禦力 -0.4，使其更易被攻下',
+    effectLabel:    '持續 10 秒  ·  單次使用',
+    price:          5,          // 10→5 奧術石：10 顆等於全存，超難入手；5 顆更合理
     priceType:      'arcane',
     unlockRule:     null,
     maxOwned:       1,
@@ -100,7 +100,7 @@ export const SHOP_ITEMS = [
     badge:          '⚑',
     desc:           '植入戰旗，指定節點與最近友方節點生兵速率 ×1.3，持續 12 秒',
     effectLabel:    '持續 12 秒  ·  單次使用',
-    price:          2000,
+    price:          1600,       // 2000→1600：傳奇定位不變，但更易在中後期入手
     priceType:      'gold',
     unlockRule:     { type: 'chapter', chapter: 3 },  // maxUnlocked >= 15
     maxOwned:       1,
@@ -111,9 +111,9 @@ export const SHOP_ITEMS = [
     category:       '奧術',
     name:           '虛空天象儲',
     badge:          '✦',
-    desc:           '立即對敵方節點造成 -15 兵傷害，並封鎖生兵 3 秒',
-    effectLabel:    '即時衝擊 + 3 秒封鎖  ·  單次使用',
-    price:          12,
+    desc:           '立即對敵方節點造成 -15 兵傷害，並封鎖生兵 4 秒',
+    effectLabel:    '即時衝擊 + 4 秒封鎖  ·  單次使用',
+    price:          8,          // 12→8 奧術石：12 顆根本買不起；8 顆需存 1 關才能購
     priceType:      'arcane',
     unlockRule:     { type: 'chapter', chapter: 4 },  // maxUnlocked >= 20
     maxOwned:       1,

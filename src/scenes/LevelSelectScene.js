@@ -48,6 +48,66 @@ const LEVELS_PER_CHAPTER = 5;
 const NUM_CHAPTERS       = 6;
 const ROWS_PER_CHAPTER   = Math.ceil(LEVELS_PER_CHAPTER / COLS); // = 2
 
+// ── 戰前道具推薦（簡易規則引擎）────────────────────────────────
+// 依關卡節點特徵給出最多 2 個推薦道具 id + 一句原因說明。
+// 不做 AI 分析，只判斷「敵方城堡數」「中立數」「總兵力」等簡單指標。
+function _getLevelRecommendations(levelData) {
+  if (!levelData) return [];
+  const nodes = levelData.nodes ?? [];
+
+  const enemyNodes    = nodes.filter(n => n.owner === 'enemy');
+  const neutralNodes  = nodes.filter(n => n.owner === 'neutral');
+  const playerNodes   = nodes.filter(n => n.owner === 'player');
+
+  const enemyCastles  = enemyNodes.filter(n => n.type === 'CASTLE').length;
+  const enemyTowers   = enemyNodes.filter(n => n.type === 'TOWER').length;
+  const neutralCount  = neutralNodes.length;
+  const totalEnemyUnits = enemyNodes.reduce((s, n) => s + (n.currentUnits ?? 0), 0);
+  const hasPlayerCastle = playerNodes.some(n => n.type === 'CASTLE');
+
+  const recs = [];
+
+  // 敵方雙城堡 → 防禦力高，建議破防
+  if (enemyCastles >= 2) {
+    recs.push({ id: 'blood_warden', reason: '敵方雙城堡防禦極高，破防可大幅降低攻堅難度' });
+    recs.push({ id: 'iron_rampart', reason: '雙城堡反攻兇猛，護住我方前線據點' });
+  } else if (enemyCastles === 1 && totalEnemyUnits >= 50) {
+    // 單城堡但兵力雄厚
+    recs.push({ id: 'blood_warden', reason: '敵方城堡防禦高，破防有助快速突破' });
+    if (!hasPlayerCastle) {
+      recs.push({ id: 'holy_shield', reason: '我方無城堡，護符保住關鍵節點不被一波清' });
+    }
+  } else if (enemyCastles === 1) {
+    recs.push({ id: 'iron_rampart', reason: '敵方城堡難攻，強化己方防禦穩住節奏' });
+  }
+
+  // 塔多 → 建議加速繞行
+  if (enemyTowers >= 2 && recs.length < 2) {
+    recs.push({ id: 'swift_hooves', reason: '多座哨塔封路，加速部隊繞行更有效率' });
+  }
+
+  // 中立節點多 → 擴張導向
+  if (neutralCount >= 4 && recs.length < 2) {
+    recs.push({ id: 'swift_hooves', reason: '中立點多，加速搶佔可搶先形成包圍' });
+  } else if (neutralCount >= 3 && recs.length < 2) {
+    recs.push({ id: 'iron_banner', reason: '擴張後用戰旗鞏固生兵，拉開生產差距' });
+  }
+
+  // 敵方兵力極多 → 封鎖生兵
+  if (totalEnemyUnits >= 80 && recs.length < 2) {
+    recs.push({ id: 'void_seal', reason: '敵方兵力極強，封印節點能有效壓制補員' });
+  } else if (totalEnemyUnits >= 60 && recs.length < 2) {
+    recs.push({ id: 'void_reservoir', reason: '直接削弱敵方兵力並封鎖，快速打開局面' });
+  }
+
+  // 防守壓力大（無我方城堡 + 弱起步）
+  if (!hasPlayerCastle && totalEnemyUnits >= 35 && recs.length < 2) {
+    recs.push({ id: 'holy_shield', reason: '起步弱勢時，護符能在關鍵時刻保住節點' });
+  }
+
+  return recs.slice(0, 2);
+}
+
 export class LevelSelectScene extends Phaser.Scene {
   constructor() {
     super({ key: 'LevelSelectScene' });
@@ -570,6 +630,10 @@ export class LevelSelectScene extends Phaser.Scene {
     // 預載上次裝備選擇（過濾掉已耗盡的道具）
     let selected = SaveSystem.getEquippedItems().filter(id => (owned[id] ?? 0) > 0);
 
+    // 推薦道具（依關卡節點特徵）
+    const levelData = LEVELS.find(l => l.id === levelId);
+    const recs      = _getLevelRecommendations(levelData);
+
     // ── 全螢幕暗色遮罩 ────────────────────────────────────────
     const overlay = this.add.graphics().setDepth(18);
     overlay.fillStyle(0x000000, 0.72);
@@ -583,7 +647,8 @@ export class LevelSelectScene extends Phaser.Scene {
 
     // ── 面板容器 ──────────────────────────────────────────────
     const PW  = 640;
-    const PH  = ownedList.length > 0 ? 380 : 240;
+    // 有持有道具時：增加 60px 給推薦區塊；無道具時略小
+    const PH  = ownedList.length > 0 ? 440 : 280;
     const panel = this.add.container(W / 2, H / 2).setDepth(20);
 
     // 背景
@@ -612,6 +677,45 @@ export class LevelSelectScene extends Phaser.Scene {
     }).setOrigin(0.5, 0);
     panel.add(countTxt);
 
+    // ── 本關推薦區塊 ──────────────────────────────────────────
+    // 小型色塊，顯示 1~2 個道具推薦 + 一句原因。
+    // 無推薦時顯示「自由搭配」提示。
+    {
+      const recY    = -PH / 2 + 95;   // 垂直起始（分隔線上方留白）
+      const recBg   = this.add.graphics();
+      recBg.fillStyle(0x0d0a07, 0.85);
+      recBg.fillRoundedRect(-PW / 2 + 20, recY, PW - 40, 56, 4);
+      recBg.lineStyle(1, 0x3a2a0a, 0.55);
+      recBg.strokeRoundedRect(-PW / 2 + 20, recY, PW - 40, 56, 4);
+      panel.add(recBg);
+
+      // 「💡 本關推薦」標籤
+      panel.add(this.add.text(-PW / 2 + 32, recY + 8, '💡 本關推薦', {
+        fontSize: '11px', fontFamily: 'Arial, sans-serif', color: '#8a6a22',
+      }).setOrigin(0, 0));
+
+      if (recs.length === 0) {
+        // 無特殊推薦
+        panel.add(this.add.text(0, recY + 28, '本關難度較低，自由搭配即可', {
+          fontSize: '12px', fontFamily: 'Arial, sans-serif', color: '#594d38',
+        }).setOrigin(0.5, 0));
+      } else {
+        // 道具名稱（badge + name，以頓號間隔）
+        const recNames = recs.map(r => {
+          const item = SHOP_ITEMS.find(i => i.id === r.id);
+          return item ? `${item.badge} ${item.name}` : r.id;
+        }).join('　');
+        panel.add(this.add.text(0, recY + 10, recNames, {
+          fontSize: '13px', fontFamily: 'Arial Black, sans-serif', color: '#d4aa55',
+        }).setOrigin(0.5, 0));
+
+        // 原因（取第一個推薦的 reason，最具代表性）
+        panel.add(this.add.text(0, recY + 32, recs[0].reason, {
+          fontSize: '11px', fontFamily: 'Arial, sans-serif', color: '#7a5e22',
+        }).setOrigin(0.5, 0));
+      }
+    }
+
     // ── 道具卡片 ──────────────────────────────────────────────
     const ITEM_W   = 128;
     const ITEM_H   = 72;
@@ -627,7 +731,8 @@ export class LevelSelectScene extends Phaser.Scene {
       const cols    = Math.min(ownedList.length, 4);
       const totalW  = cols * (ITEM_W + ITEM_GAP) - ITEM_GAP;
       const startX  = -totalW / 2 + ITEM_W / 2;
-      const rowTop  = -PH / 2 + 108;
+      // rowTop 向下移 55px（為推薦區塊讓空間）
+      const rowTop  = -PH / 2 + 168;
 
       ownedList.forEach((item, idx) => {
         const col = idx % 4;
