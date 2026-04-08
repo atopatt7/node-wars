@@ -6,6 +6,9 @@
  * 保留此結構方便日後加入音效/圖片。
  */
 
+import { audioManager } from '../systems/AudioManager.js';
+import { SaveSystem }   from '../systems/SaveSystem.js';
+
 export class BootScene extends Phaser.Scene {
   constructor() {
     super({ key: 'BootScene' });
@@ -44,6 +47,9 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
+    // 一啟動就讀取設定並套用（音量 / 音效分類）
+    audioManager.applySettings(SaveSystem.getSettings());
+
     // 短暫停留後進入主選單
     this.time.delayedCall(400, () => {
       this.scene.start('MenuScene');

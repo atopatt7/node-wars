@@ -28,11 +28,38 @@
  *   _getCtx() 在首次呼叫時建立，若仍為 suspended 則嘗試 resume()。
  */
 
+// UI 音效名稱集合（供分類控制）
+const UI_SOUNDS = new Set(['ui_click', 'ui_hover']);
+
 export class AudioManager {
   constructor() {
     /** @type {AudioContext|null} */
-    this._ctx     = null;
-    this._enabled = true;
+    this._ctx            = null;
+    this._enabled        = true;
+    /** 主音量 0–1（預設 0.7） */
+    this._masterVolume   = 0.70;
+    /** UI 音效開關 */
+    this._uiEnabled      = true;
+    /** 遊戲音效開關 */
+    this._gameEnabled    = true;
+  }
+
+  // ── 音量輔助 ─────────────────────────────────────────
+
+  /**
+   * 取得（或建立）主音量 GainNode，所有音源都連接到此節點。
+   * setMasterVolume() 直接修改此節點的 gain.value，即時生效。
+   * @param {AudioContext} ctx
+   * @returns {GainNode}
+   */
+  _getMasterDst(ctx) {
+    // 若 ctx 重建（首次 / 切換），重新建立 masterGain
+    if (!this._masterGainNode || this._masterGainNode.context !== ctx) {
+      this._masterGainNode = ctx.createGain();
+      this._masterGainNode.gain.value = this._masterVolume;
+      this._masterGainNode.connect(this._getMasterDst(ctx));
+    }
+    return this._masterGainNode;
   }
 
   // ── 取得或建立 AudioContext ──────────────────────────
@@ -57,6 +84,47 @@ export class AudioManager {
     return this._ctx;
   }
 
+  // ── 設定控制 ──────────────────────────────────────
+
+  /**
+   * 設定主音量（0–100 → 內部換算為 0–1）
+   * @param {number} v  0~100
+   */
+  setMasterVolume(v) {
+    this._masterVolume = Math.max(0, Math.min(100, v)) / 100;
+    // 即時更新 master gain node（若已建立）
+    if (this._masterGainNode) {
+      this._masterGainNode.gain.value = this._masterVolume;
+    }
+  }
+
+  /**
+   * 開關 UI 音效（hover / click）
+   * @param {boolean} enabled
+   */
+  setUIEnabled(enabled) {
+    this._uiEnabled = !!enabled;
+  }
+
+  /**
+   * 開關遊戲音效（派兵 / 佔領 / 法術等）
+   * @param {boolean} enabled
+   */
+  setGameEnabled(enabled) {
+    this._gameEnabled = !!enabled;
+  }
+
+  /**
+   * 從 SaveSystem 設定值初始化（遊戲一啟動時呼叫一次）。
+   * 為避免循環依賴，接受設定物件而非直接 import SaveSystem。
+   * @param {{ masterVolume: number, uiSoundEnabled: boolean, gameSoundEnabled: boolean }} settings
+   */
+  applySettings(settings) {
+    this.setMasterVolume(settings.masterVolume ?? 70);
+    this.setUIEnabled(settings.uiSoundEnabled ?? true);
+    this.setGameEnabled(settings.gameSoundEnabled ?? true);
+  }
+
   // ── 公開播放介面 ──────────────────────────────────
 
   /**
@@ -65,6 +133,11 @@ export class AudioManager {
    */
   play(sound) {
     if (!this._enabled) return;
+    // UI / 遊戲音效分類控制
+    if (UI_SOUNDS.has(sound) && !this._uiEnabled) return;
+    if (!UI_SOUNDS.has(sound) && !this._gameEnabled) return;
+    // 主音量為 0 時不播（避免建立 AudioContext）
+    if (this._masterVolume === 0) return;
     const ctx = this._getCtx();
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -101,7 +174,7 @@ export class AudioManager {
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.09, now);
     g.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-    g.connect(ctx.destination);
+    g.connect(this._getMasterDst(ctx));
 
     const o = ctx.createOscillator();
     o.type = 'sine';
@@ -122,7 +195,7 @@ export class AudioManager {
     g1.gain.setValueAtTime(0.18, now);
     g1.gain.setValueAtTime(0.18, now + 0.08);
     g1.gain.linearRampToValueAtTime(0.001, now + 0.50);
-    g1.connect(ctx.destination);
+    g1.connect(this._getMasterDst(ctx));
 
     const o1 = ctx.createOscillator();
     o1.type = 'triangle';
@@ -137,7 +210,7 @@ export class AudioManager {
     g2.gain.setValueAtTime(0.00, now + 0.08);
     g2.gain.linearRampToValueAtTime(0.07, now + 0.14);
     g2.gain.linearRampToValueAtTime(0.001, now + 0.50);
-    g2.connect(ctx.destination);
+    g2.connect(this._getMasterDst(ctx));
 
     const o2 = ctx.createOscillator();
     o2.type = 'sine';
@@ -156,7 +229,7 @@ export class AudioManager {
     const g1 = ctx.createGain();
     g1.gain.setValueAtTime(0.45, now);
     g1.gain.exponentialRampToValueAtTime(0.001, now + 0.60);
-    g1.connect(ctx.destination);
+    g1.connect(this._getMasterDst(ctx));
 
     const o1 = ctx.createOscillator();
     o1.type = 'sawtooth';
@@ -170,7 +243,7 @@ export class AudioManager {
     const g2 = ctx.createGain();
     g2.gain.setValueAtTime(0.14, now);
     g2.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-    g2.connect(ctx.destination);
+    g2.connect(this._getMasterDst(ctx));
 
     const o2 = ctx.createOscillator();
     o2.type = 'sawtooth';
@@ -193,7 +266,7 @@ export class AudioManager {
       g.gain.setValueAtTime(0.18, t);
       g.gain.setValueAtTime(0.18, t + 0.06);
       g.gain.linearRampToValueAtTime(0.001, t + 0.26);
-      g.connect(ctx.destination);
+      g.connect(this._getMasterDst(ctx));
 
       const o = ctx.createOscillator();
       o.type = 'triangle';
@@ -219,7 +292,7 @@ export class AudioManager {
       g.gain.setValueAtTime(0.20, t);
       g.gain.setValueAtTime(0.20, t + duration * 0.5);
       g.gain.linearRampToValueAtTime(0.001, t + duration + 0.15);
-      g.connect(ctx.destination);
+      g.connect(this._getMasterDst(ctx));
 
       const o = ctx.createOscillator();
       o.type = 'square';
@@ -243,7 +316,7 @@ export class AudioManager {
       g.gain.setValueAtTime(0.16, t);
       g.gain.setValueAtTime(0.16, t + 0.15);
       g.gain.linearRampToValueAtTime(0.001, t + 0.60);
-      g.connect(ctx.destination);
+      g.connect(this._getMasterDst(ctx));
 
       const o = ctx.createOscillator();
       o.type = 'triangle';
@@ -278,7 +351,7 @@ export class AudioManager {
       g.gain.linearRampToValueAtTime(0.13, t + 0.04);
       g.gain.setValueAtTime(0.13, t + 0.12);
       g.gain.linearRampToValueAtTime(0.001, t + 0.46);
-      g.connect(ctx.destination);
+      g.connect(this._getMasterDst(ctx));
 
       const o = ctx.createOscillator();
       o.type = 'sine';
@@ -293,7 +366,7 @@ export class AudioManager {
     const gE = ctx.createGain();
     gE.gain.setValueAtTime(0.045, echoT);
     gE.gain.linearRampToValueAtTime(0.001, echoT + 0.44);
-    gE.connect(ctx.destination);
+    gE.connect(this._getMasterDst(ctx));
     const oE = ctx.createOscillator();
     oE.type = 'sine';
     oE.frequency.setValueAtTime(523, echoT);
@@ -317,7 +390,7 @@ export class AudioManager {
       g.gain.setValueAtTime(0.21, t);
       g.gain.setValueAtTime(0.21, t + dur * 0.55);
       g.gain.linearRampToValueAtTime(0.001, t + dur + 0.11);
-      g.connect(ctx.destination);
+      g.connect(this._getMasterDst(ctx));
 
       const o = ctx.createOscillator();
       o.type = 'square';
@@ -333,7 +406,7 @@ export class AudioManager {
     gD.gain.setValueAtTime(0.07, now);
     gD.gain.setValueAtTime(0.07, now + 1.10);
     gD.gain.linearRampToValueAtTime(0.001, now + 1.50);
-    gD.connect(ctx.destination);
+    gD.connect(this._getMasterDst(ctx));
     const oD = ctx.createOscillator();
     oD.type = 'sine';
     oD.frequency.setValueAtTime(130, now); // C3
@@ -358,7 +431,7 @@ export class AudioManager {
       g.gain.setValueAtTime(0.16, t);
       g.gain.setValueAtTime(0.16, t + dur * 0.5);
       g.gain.linearRampToValueAtTime(0.001, t + dur + 0.14);
-      g.connect(ctx.destination);
+      g.connect(this._getMasterDst(ctx));
 
       const o = ctx.createOscillator();
       o.type = 'triangle';
@@ -372,7 +445,7 @@ export class AudioManager {
         const gH = ctx.createGain();
         gH.gain.setValueAtTime(0.08, t);
         gH.gain.linearRampToValueAtTime(0.001, t + dur + 0.14);
-        gH.connect(ctx.destination);
+        gH.connect(this._getMasterDst(ctx));
         const oH = ctx.createOscillator();
         oH.type = 'sine';
         oH.frequency.setValueAtTime(freq / 2, t); // 低八度 E4
@@ -392,7 +465,7 @@ export class AudioManager {
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.32, now);
     g.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-    g.connect(ctx.destination);
+    g.connect(this._getMasterDst(ctx));
 
     const o = ctx.createOscillator();
     o.type = 'triangle';
@@ -411,7 +484,7 @@ export class AudioManager {
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.10, now);
     g.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
-    g.connect(ctx.destination);
+    g.connect(this._getMasterDst(ctx));
 
     const o = ctx.createOscillator();
     o.type = 'sine';
@@ -432,7 +505,7 @@ export class AudioManager {
     const g1 = ctx.createGain();
     g1.gain.setValueAtTime(0.22, now);
     g1.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
-    g1.connect(ctx.destination);
+    g1.connect(this._getMasterDst(ctx));
 
     const o1 = ctx.createOscillator();
     o1.type = 'triangle';
@@ -446,7 +519,7 @@ export class AudioManager {
     const g2 = ctx.createGain();
     g2.gain.setValueAtTime(0.09, now);
     g2.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
-    g2.connect(ctx.destination);
+    g2.connect(this._getMasterDst(ctx));
 
     const o2 = ctx.createOscillator();
     o2.type = 'sine';
@@ -465,7 +538,7 @@ export class AudioManager {
     g.gain.setValueAtTime(0.18, now);
     g.gain.setValueAtTime(0.18, now + 0.10);
     g.gain.linearRampToValueAtTime(0.001, now + 0.22);
-    g.connect(ctx.destination);
+    g.connect(this._getMasterDst(ctx));
 
     const o = ctx.createOscillator();
     o.type = 'triangle';
@@ -479,7 +552,7 @@ export class AudioManager {
     const gT = ctx.createGain();
     gT.gain.setValueAtTime(0.08, now + 0.16);
     gT.gain.linearRampToValueAtTime(0.001, now + 0.30);
-    gT.connect(ctx.destination);
+    gT.connect(this._getMasterDst(ctx));
     const oT = ctx.createOscillator();
     oT.type = 'sine';
     oT.frequency.setValueAtTime(2200, now + 0.16);
@@ -498,7 +571,7 @@ export class AudioManager {
     g1.gain.setValueAtTime(0.20, now);
     g1.gain.setValueAtTime(0.20, now + 0.08);
     g1.gain.linearRampToValueAtTime(0.001, now + 0.32);
-    g1.connect(ctx.destination);
+    g1.connect(this._getMasterDst(ctx));
 
     const o1 = ctx.createOscillator();
     o1.type = 'sawtooth';
@@ -512,7 +585,7 @@ export class AudioManager {
     const g2 = ctx.createGain();
     g2.gain.setValueAtTime(0.12, now + 0.04);
     g2.gain.linearRampToValueAtTime(0.001, now + 0.30);
-    g2.connect(ctx.destination);
+    g2.connect(this._getMasterDst(ctx));
 
     const o2 = ctx.createOscillator();
     o2.type = 'sine';

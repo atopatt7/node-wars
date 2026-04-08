@@ -148,9 +148,12 @@ export class MenuScene extends Phaser.Scene {
       });
     });
 
-    // TERTIARY — 系統設定（y=436, h=54, center=463，無功能）
+    // TERTIARY — 系統設定（y=436, h=54, center=463）
     const btn3 = this._createButton(RX, 463, '系統設定', BTN_W, 54, 'tertiary', () => {
-      // 預留：設定功能尚未實裝
+      this.cameras.main.fadeOut(300, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => {
+        this.scene.start('SettingsScene', { from: 'MenuScene' });
+      });
     });
 
     // 版權聲明（右下角）

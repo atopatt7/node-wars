@@ -52,7 +52,7 @@ export class UIController {
     this._prevPending  = undefined;  // 上幀待施放 id
 
     // ── 子面板模組 ──
-    this._pausePanel    = new PausePanel(scene);
+    this._pausePanel    = new PausePanel(scene, config.levelId);
     this._gameOverPanel = new GameOverPanel(scene, {
       levelId:    config.levelId,
       levelCount: config.levelCount,

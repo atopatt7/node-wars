@@ -29,12 +29,13 @@
  *   SaveSystem.isCompleted(3);       // => true
  */
 
-const SAVE_KEY     = 'nodeWars_v1_completed';
-const UNLOCK_KEY   = 'nodeWars_v1_maxUnlocked';
-const FAIL_KEY     = 'nodeWars_v1_failCounts';   // 防卡關：各關失敗次數
+const SAVE_KEY      = 'nodeWars_v1_completed';
+const UNLOCK_KEY    = 'nodeWars_v1_maxUnlocked';
+const FAIL_KEY      = 'nodeWars_v1_failCounts';   // 防卡關：各關失敗次數
 const CURRENCY_KEY  = 'nodeWars_v1_currency';     // { gold, arcane }
 const OWNED_KEY     = 'nodeWars_v1_ownedItems';   // { [itemId]: count }
 const EQUIPPED_KEY  = 'nodeWars_v1_equipped';     // string[] — 最多 3 個 itemId
+const SETTINGS_KEY  = 'nodeWars_v1_settings';     // 使用者設定（音量 / 特效）
 
 export const SaveSystem = {
   // ── 完成記錄 ──────────────────────────────────────
@@ -302,12 +303,55 @@ export const SaveSystem = {
     } catch {}
   },
 
+  // ── 使用者設定 ───────────────────────────────────────
+
+  /**
+   * 預設設定值
+   */
+  _defaultSettings() {
+    return {
+      masterVolume:     70,    // 0–100
+      uiSoundEnabled:   true,
+      gameSoundEnabled: true,
+      lowEffectsEnabled: false,
+    };
+  },
+
+  /**
+   * 讀取設定（不存在則回傳預設值）
+   * @returns {{ masterVolume: number, uiSoundEnabled: boolean, gameSoundEnabled: boolean, lowEffectsEnabled: boolean }}
+   */
+  getSettings() {
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === 'object' && parsed !== null) {
+          return { ...this._defaultSettings(), ...parsed };
+        }
+      }
+    } catch {}
+    return this._defaultSettings();
+  },
+
+  /**
+   * 儲存設定（部分更新亦可）
+   * @param {Partial<ReturnType<typeof this._defaultSettings>>} patch
+   */
+  setSettings(patch) {
+    try {
+      const current = this.getSettings();
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...current, ...patch }));
+    } catch {}
+  },
+
   // ── 清除 ──────────────────────────────────────────
 
   /**
-   * 清除所有存檔（開發 / 測試用途）
+   * 清除「遊戲進度」存檔（設定除外）
+   * 供「重置進度」功能呼叫：關卡、貨幣、道具全部歸零。
    */
-  reset() {
+  resetProgress() {
     try {
       localStorage.removeItem(SAVE_KEY);
       localStorage.removeItem(UNLOCK_KEY);
@@ -315,9 +359,17 @@ export const SaveSystem = {
       localStorage.removeItem(CURRENCY_KEY);
       localStorage.removeItem(OWNED_KEY);
       localStorage.removeItem(EQUIPPED_KEY);
-    } catch {
-      // 靜默忽略
-    }
+    } catch {}
+  },
+
+  /**
+   * 清除所有存檔（含設定，開發 / 測試用途）
+   */
+  reset() {
+    this.resetProgress();
+    try {
+      localStorage.removeItem(SETTINGS_KEY);
+    } catch {}
   },
 
   // ── 私有：安全讀取 localStorage ──────────────────

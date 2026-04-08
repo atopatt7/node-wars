@@ -55,9 +55,11 @@ export class GameScene extends Phaser.Scene {
   create() {
     // ── 行動裝置效能模式偵測 ──
     // 在 create() 而非 constructor() 偵測，確保 navigator 已就緒。
+    // 同時支援「低特效模式」設定（window.__lowEffectsMode，由 SettingsScene 寫入）。
     this.isMobile =
       /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-      (navigator.maxTouchPoints !== undefined && navigator.maxTouchPoints > 2);
+      (navigator.maxTouchPoints !== undefined && navigator.maxTouchPoints > 2) ||
+      !!(window.__lowEffectsMode);
 
     // 每幀快取一次 Date.now()，避免在 draw/node/troop 中重複呼叫
     this._now = 0;

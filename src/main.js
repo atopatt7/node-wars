@@ -13,6 +13,7 @@ import { MenuScene }     from './scenes/MenuScene.js';
 import { LevelSelectScene } from './scenes/LevelSelectScene.js';
 import { ShopScene }     from './scenes/ShopScene.js';
 import { GameScene }     from './scenes/GameScene.js';
+import { SettingsScene } from './scenes/SettingsScene.js';
 import { GAME_WIDTH, GAME_HEIGHT } from './config.js';
 
 // ── 行動裝置偵測（用於效能模式）──
@@ -49,6 +50,7 @@ const config = {
     LevelSelectScene,
     ShopScene,
     GameScene,
+    SettingsScene,
   ],
 
   // ── 渲染設定（iOS 優化）──
